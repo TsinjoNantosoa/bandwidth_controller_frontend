@@ -1,12 +1,19 @@
-# BandwidthCtrl - Gateway Manager Dashboard
+# 🌐 BandwidthCtrl - Gateway Manager Dashboard
 
-Application React moderne pour la gestion et le contrôle de la bande passante du réseau Gateway.
+> Application React moderne pour la gestion et le contrôle de la bande passante du réseau Gateway
 
-![Dashboard Preview](./preview.png)
+[![React](https://img.shields.io/badge/React-18.3.1-blue.svg)](https://reactjs.org/)
+[![Vite](https://img.shields.io/badge/Vite-5.4.2-646CFF.svg)](https://vitejs.dev/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Responsive](https://img.shields.io/badge/Responsive-100%25-success.svg)]()
 
-## 🚀 Fonctionnalités
+## � Aperçu
 
-### Dashboard Principal
+Une interface moderne et intuitive pour gérer votre bande passante réseau avec des graphiques en temps réel et une gestion complète des appareils connectés.
+
+## �🚀 Fonctionnalités
+
+### 📊 Dashboard Principal
 - **Statistiques en temps réel**
   - Vitesse de téléchargement (Download Speed)
   - Vitesse d'envoi (Upload Speed)
@@ -17,7 +24,7 @@ Application React moderne pour la gestion et le contrôle de la bande passante d
   - Graphique d'utilisation de la bande passante sur 24h
   - Distribution du trafic par type (Streaming, Gaming, Browsing, etc.)
 
-### Gestion des Appareils
+### 💻 Gestion des Appareils
 - Liste détaillée des appareils connectés
 - Informations par appareil :
   - Nom et description
@@ -26,7 +33,7 @@ Application React moderne pour la gestion et le contrôle de la bande passante d
   - Limites de bande passante
   - Pourcentage d'utilisation
 
-### Actions Rapides
+### ⚡ Actions Rapides
 - **Block Device** - Restreindre l'accès réseau
 - **Set Speed Limit** - Configurer un plafond de bande passante
 - **Schedule Rule** - Restrictions basées sur le temps
