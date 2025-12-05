@@ -189,3 +189,51 @@ Pour toute question ou problème, n'hésitez pas à ouvrir une issue sur GitHub.
 ---
 
 **Développé avec ❤️ en utilisant React et Vite**
+
+## **Integration Backend (QoS)**
+
+- **But**: ce dossier frontend a été connecté au backend QoS (service Go) afin de permettre la configuration et la gestion des règles de bande passante depuis l'interface.
+
+- **Fichiers ajoutés / modifiés**:
+  - `src/services/api.js` : wrapper des appels HTTP vers le backend (`/qos/*`).
+  - `src/pages/BandwidthRules.jsx` : interface pour initialiser HTB, appliquer des limites simples, et réinitialiser les règles — fait appel aux fonctions du service API.
+  - `vite.config.js` : proxy de développement pour rediriger `/qos` et `/swagger` vers `http://localhost:8080` (évite les problèmes CORS en dev).
+
+- **Endpoints backend utilisés** (exemples) :
+  - `POST /qos/setup` — initialiser la structure HTB
+  - `POST /qos/htb/global/limit` — mettre à jour la limite HTB globale
+  - `POST /qos/simple/limit` — appliquer une limitation simple (TBF)
+  - `POST /qos/reset` — réinitialiser toutes les règles
+
+- **Comment tester la communication (local)** :
+  1. Démarrez le backend QoS (doit être lancé sur `http://localhost:8080`) — le backend doit être exécuté par votre collègue ou vous-même. Exemple :
+     ```bash
+     cd /path/to/bandwidth_controller_backend
+     sudo ./qos-app wlp2s0 wlp2s0
+     ```
+     > Attention : le backend exécute `tc` et requiert des droits root. Les commandes `tc` peuvent échouer selon le pilote/interface (erreurs `Exclusivity flag on`).
+
+  2. Lancez le frontend :
+     ```bash
+     cd /home/sandaniaina/Documents/projet/bandwidth_frontend
+     npm install
+     npm run dev
+     ```
+
+  3. Ouvrez `http://localhost:5174/` et allez sur **Bandwidth Rules**. Cliquez sur **Initialize HTB Structure** ou ajoutez une règle. Ouvrez DevTools → Network pour vérifier la requête `POST` vers `/qos/setup`.
+
+  4. Test via curl (passé par le proxy Vite) :
+     ```bash
+     curl -v -X POST http://localhost:5174/qos/setup \
+       -H 'Content-Type: application/json' \
+       -d '{"lan_interface":"wlp2s0","wan_interface":"wlp2s0","total_bandwidth":"100mbit"}'
+     ```
+
+- **Production / déploiement** : ne pas compter sur le proxy Vite. Configurez l'URL du backend via une variable d'environnement lors du build :
+  - Remplacer la valeur de `API_BASE_URL` dans `src/services/api.js` par `import.meta.env.VITE_API_URL || ''` puis set `VITE_API_URL` en production.
+
+- **Observation importante** : si le backend renvoie une erreur liée à `tc` (ex: `Exclusivity flag on`), cela signifie que la modification de qdisc est bloquée par le système/driver — ce problème doit être résolu côté machine exécutant le backend (changement d'interface, arrêt d'un service concurrent, ou utilisation d'une interface filaire pour les tests).
+
+---
+
+
