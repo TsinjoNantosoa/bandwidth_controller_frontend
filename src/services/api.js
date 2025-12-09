@@ -3,20 +3,17 @@ const API_BASE_URL = 'http://localhost:8080';
 
 /**
  * Initialise la structure HTB (Hierarchical Token Bucket)
- * @param {string} lanInterface - Interface LAN (ex: 'wlp2s0')
- * @param {string} wanInterface - Interface WAN (ex: 'wlp2s0')
+ * Backend already knows LAN/WAN interfaces (passed at startup)
  * @param {string} totalBandwidth - Bande passante totale (ex: '100mbit')
  * @returns {Promise<Object>}
  */
-export const setupHTB = async (lanInterface, wanInterface, totalBandwidth) => {
+export const setupHTB = async (totalBandwidth) => {
   const response = await fetch(`${API_BASE_URL}/qos/setup`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      lan_interface: lanInterface,
-      wan_interface: wanInterface,
       total_bandwidth: totalBandwidth,
     }),
   });
@@ -31,21 +28,20 @@ export const setupHTB = async (lanInterface, wanInterface, totalBandwidth) => {
 
 /**
  * Met à jour la limite globale de bande passante HTB
- * @param {string} lanInterface - Interface LAN
- * @param {string} wanInterface - Interface WAN
- * @param {string} newRate - Nouveau débit (ex: '50mbit')
+ * Backend already knows LAN/WAN interfaces (passed at startup)
+ * @param {string} rateLimit - Nouveau débit (ex: '50mbit')
+ * @param {string} latency - Latence optionnelle (ex: '50ms')
  * @returns {Promise<Object>}
  */
-export const updateHTBGlobalLimit = async (lanInterface, wanInterface, newRate) => {
+export const updateHTBGlobalLimit = async (rateLimit, latency = '50ms') => {
   const response = await fetch(`${API_BASE_URL}/qos/htb/global/limit`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      lan_interface: lanInterface,
-      wan_interface: wanInterface,
-      new_rate: newRate,
+      rate_limit: rateLimit,
+      latency: latency,
     }),
   });
 
@@ -59,21 +55,20 @@ export const updateHTBGlobalLimit = async (lanInterface, wanInterface, newRate) 
 
 /**
  * Applique une limitation simple (TBF - Token Bucket Filter)
- * @param {string} lanInterface - Interface LAN
- * @param {string} wanInterface - Interface WAN
+ * Backend already knows LAN/WAN interfaces (passed at startup)
  * @param {string} rateLimit - Limite de débit (ex: '50mbit')
+ * @param {string} latency - Latence optionnelle (ex: '50ms')
  * @returns {Promise<Object>}
  */
-export const applySimpleLimit = async (lanInterface, wanInterface, rateLimit) => {
+export const applySimpleLimit = async (rateLimit, latency = '50ms') => {
   const response = await fetch(`${API_BASE_URL}/qos/simple/limit`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
-      lan_interface: lanInterface,
-      wan_interface: wanInterface,
       rate_limit: rateLimit,
+      latency: latency,
     }),
   });
 
@@ -87,20 +82,15 @@ export const applySimpleLimit = async (lanInterface, wanInterface, rateLimit) =>
 
 /**
  * Réinitialise toutes les règles de mise en forme (QDiscs)
- * @param {string} lanInterface - Interface LAN
- * @param {string} wanInterface - Interface WAN
+ * Backend already knows LAN/WAN interfaces (passed at startup)
  * @returns {Promise<Object>}
  */
-export const resetShaping = async (lanInterface, wanInterface) => {
+export const resetShaping = async () => {
   const response = await fetch(`${API_BASE_URL}/qos/reset`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      lan_interface: lanInterface,
-      wan_interface: wanInterface,
-    }),
   });
 
   if (!response.ok) {

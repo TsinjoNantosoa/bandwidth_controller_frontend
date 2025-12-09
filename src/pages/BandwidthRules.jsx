@@ -28,12 +28,7 @@ const BandwidthRules = () => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
-
-  // Configuration des interfaces (à adapter selon votre environnement)
-  const [interfaces, setInterfaces] = useState({
-    lan: 'wlp2s0',
-    wan: 'wlp2s0'
-  })
+  const [totalBandwidth, setTotalBandwidth] = useState('100mbit')
 
   const [newRule, setNewRule] = useState({
     name: '',
@@ -49,12 +44,8 @@ const BandwidthRules = () => {
     setSuccess(null)
 
     try {
-      const result = await api.setupHTB(
-        interfaces.lan,
-        interfaces.wan,
-        '100mbit'
-      )
-      setSuccess('HTB structure initialized successfully!')
+      const result = await api.setupHTB(totalBandwidth)
+      setSuccess(`HTB structure initialized successfully with ${totalBandwidth}!`)
       console.log('HTB Setup result:', result)
     } catch (err) {
       setError(`Failed to setup HTB: ${err.message}`)
@@ -70,11 +61,7 @@ const BandwidthRules = () => {
     setSuccess(null)
 
     try {
-      const result = await api.applySimpleLimit(
-        interfaces.lan,
-        interfaces.wan,
-        bandwidth
-      )
+      const result = await api.applySimpleLimit(bandwidth)
       setSuccess(`Simple limit applied: ${bandwidth}`)
       console.log('Simple limit result:', result)
     } catch (err) {
@@ -91,11 +78,7 @@ const BandwidthRules = () => {
     setSuccess(null)
 
     try {
-      const result = await api.updateHTBGlobalLimit(
-        interfaces.lan,
-        interfaces.wan,
-        newRate
-      )
+      const result = await api.updateHTBGlobalLimit(newRate)
       setSuccess(`HTB limit updated to: ${newRate}`)
       console.log('HTB update result:', result)
     } catch (err) {
@@ -114,7 +97,7 @@ const BandwidthRules = () => {
     setSuccess(null)
 
     try {
-      const result = await api.resetShaping(interfaces.lan, interfaces.wan)
+      const result = await api.resetShaping()
       setSuccess('All QoS rules have been reset!')
       console.log('Reset result:', result)
     } catch (err) {
@@ -222,51 +205,36 @@ const BandwidthRules = () => {
       <div className="card" style={{ marginBottom: '20px', padding: '20px' }}>
         <h3 style={{ marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
           <Shield size={20} />
-          Network Interfaces Configuration
+          HTB Configuration
         </h3>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-          <div>
-            <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)' }}>
-              LAN Interface
-            </label>
-            <input
-              type="text"
-              value={interfaces.lan}
-              onChange={(e) => setInterfaces({ ...interfaces, lan: e.target.value })}
-              style={{
-                width: '100%',
-                padding: '10px',
-                backgroundColor: 'var(--card-bg)',
-                border: '1px solid var(--border)',
-                borderRadius: '6px',
-                color: 'var(--text-primary)'
-              }}
-            />
-          </div>
-          <div>
-            <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)' }}>
-              WAN Interface
-            </label>
-            <input
-              type="text"
-              value={interfaces.wan}
-              onChange={(e) => setInterfaces({ ...interfaces, wan: e.target.value })}
-              style={{
-                width: '100%',
-                padding: '10px',
-                backgroundColor: 'var(--card-bg)',
-                border: '1px solid var(--border)',
-                borderRadius: '6px',
-                color: 'var(--text-primary)'
-              }}
-            />
-          </div>
+        <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '15px' }}>
+          Network interfaces (LAN/WAN) are configured when starting the backend.
+          Here you only need to set the total bandwidth.
+        </p>
+        <div style={{ maxWidth: '400px' }}>
+          <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)' }}>
+            Total Bandwidth
+          </label>
+          <input
+            type="text"
+            value={totalBandwidth}
+            onChange={(e) => setTotalBandwidth(e.target.value)}
+            placeholder="e.g., 100mbit, 1gbit"
+            style={{
+              width: '100%',
+              padding: '10px',
+              backgroundColor: 'var(--card-bg)',
+              border: '1px solid var(--border)',
+              borderRadius: '6px',
+              color: 'var(--text-primary)'
+            }}
+          />
         </div>
         <div style={{ marginTop: '15px', display: 'flex', gap: '10px' }}>
           <button 
             className="add-rule-btn"
             onClick={handleSetupHTB}
-            disabled={loading}
+            disabled={loading || !totalBandwidth}
           >
             {loading ? 'Processing...' : 'Initialize HTB Structure'}
           </button>
