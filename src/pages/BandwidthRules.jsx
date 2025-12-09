@@ -28,7 +28,8 @@ const BandwidthRules = () => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
-  const [totalBandwidth, setTotalBandwidth] = useState('100mbit')
+  const [rateLimit, setRateLimit] = useState('100mbit')
+  const [latency, setLatency] = useState('50ms')
 
   const [newRule, setNewRule] = useState({
     name: '',
@@ -38,18 +39,18 @@ const BandwidthRules = () => {
     description: ''
   })
 
-  const handleSetupHTB = async () => {
+  const handleUpdateHTBLimit = async () => {
     setLoading(true)
     setError(null)
     setSuccess(null)
 
     try {
-      const result = await api.setupHTB(totalBandwidth)
-      setSuccess(`HTB structure initialized successfully with ${totalBandwidth}!`)
-      console.log('HTB Setup result:', result)
+      const result = await api.updateHTBGlobalLimit(rateLimit, latency)
+      setSuccess(`HTB limit updated to ${rateLimit} with latency ${latency}!`)
+      console.log('HTB Update result:', result)
     } catch (err) {
-      setError(`Failed to setup HTB: ${err.message}`)
-      console.error('HTB Setup error:', err)
+      setError(`Failed to update HTB limit: ${err.message}`)
+      console.error('HTB Update error:', err)
     } finally {
       setLoading(false)
     }
@@ -61,29 +62,12 @@ const BandwidthRules = () => {
     setSuccess(null)
 
     try {
-      const result = await api.applySimpleLimit(bandwidth)
+      const result = await api.applySimpleLimit(bandwidth, latency)
       setSuccess(`Simple limit applied: ${bandwidth}`)
       console.log('Simple limit result:', result)
     } catch (err) {
       setError(`Failed to apply simple limit: ${err.message}`)
       console.error('Simple limit error:', err)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleUpdateHTBLimit = async (newRate) => {
-    setLoading(true)
-    setError(null)
-    setSuccess(null)
-
-    try {
-      const result = await api.updateHTBGlobalLimit(newRate)
-      setSuccess(`HTB limit updated to: ${newRate}`)
-      console.log('HTB update result:', result)
-    } catch (err) {
-      setError(`Failed to update HTB limit: ${err.message}`)
-      console.error('HTB update error:', err)
     } finally {
       setLoading(false)
     }
@@ -205,38 +189,58 @@ const BandwidthRules = () => {
       <div className="card" style={{ marginBottom: '20px', padding: '20px' }}>
         <h3 style={{ marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
           <Shield size={20} />
-          HTB Configuration
+          HTB Global Limit Configuration
         </h3>
         <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '15px' }}>
-          Network interfaces (LAN/WAN) are configured when starting the backend.
-          Here you only need to set the total bandwidth.
+          Backend is running in background. Update the global HTB rate limit and latency here.
         </p>
-        <div style={{ maxWidth: '400px' }}>
-          <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)' }}>
-            Total Bandwidth
-          </label>
-          <input
-            type="text"
-            value={totalBandwidth}
-            onChange={(e) => setTotalBandwidth(e.target.value)}
-            placeholder="e.g., 100mbit, 1gbit"
-            style={{
-              width: '100%',
-              padding: '10px',
-              backgroundColor: 'var(--card-bg)',
-              border: '1px solid var(--border)',
-              borderRadius: '6px',
-              color: 'var(--text-primary)'
-            }}
-          />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', maxWidth: '600px' }}>
+          <div>
+            <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)' }}>
+              Rate Limit *
+            </label>
+            <input
+              type="text"
+              value={rateLimit}
+              onChange={(e) => setRateLimit(e.target.value)}
+              placeholder="e.g., 50mbit, 100mbit"
+              style={{
+                width: '100%',
+                padding: '10px',
+                backgroundColor: 'var(--card-bg)',
+                border: '1px solid var(--border)',
+                borderRadius: '6px',
+                color: 'var(--text-primary)'
+              }}
+            />
+          </div>
+          <div>
+            <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)' }}>
+              Latency (optional)
+            </label>
+            <input
+              type="text"
+              value={latency}
+              onChange={(e) => setLatency(e.target.value)}
+              placeholder="e.g., 50ms, 100ms"
+              style={{
+                width: '100%',
+                padding: '10px',
+                backgroundColor: 'var(--card-bg)',
+                border: '1px solid var(--border)',
+                borderRadius: '6px',
+                color: 'var(--text-primary)'
+              }}
+            />
+          </div>
         </div>
         <div style={{ marginTop: '15px', display: 'flex', gap: '10px' }}>
           <button 
             className="add-rule-btn"
-            onClick={handleSetupHTB}
-            disabled={loading || !totalBandwidth}
+            onClick={handleUpdateHTBLimit}
+            disabled={loading || !rateLimit}
           >
-            {loading ? 'Processing...' : 'Initialize HTB Structure'}
+            {loading ? 'Processing...' : 'Update HTB Limit'}
           </button>
         </div>
       </div>
