@@ -1,60 +1,133 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Monitor, Smartphone, Tv, Tablet, Plus, MoreVertical, Ban, Gauge, Clock, Download } from 'lucide-react'
 import './ActiveDevices.css'
 
 const ActiveDevices = () => {
-  const [devices, setDevices] = useState([
-    {
-      id: 1,
-      name: 'Desktop-PC',
-      description: "John's Computer",
-      ip: '192.168.1.101',
-      download: 8.4,
-      upload: 2.1,
-      limit: 50,
-      type: 'desktop',
-      icon: Monitor,
-      color: '#3b82f6'
-    },
-    {
-      id: 2,
-      name: 'iPhone 14',
-      description: "Sarah's Phone",
-      ip: '192.168.1.102',
-      download: 5.2,
-      upload: 1.8,
-      limit: 20,
-      type: 'mobile',
-      icon: Smartphone,
-      color: '#a855f7'
-    },
-    {
-      id: 3,
-      name: 'Smart TV',
-      description: 'Living Room',
-      ip: '192.168.1.105',
-      download: 15.7,
-      upload: 0.5,
-      limit: 30,
-      type: 'tv',
-      icon: Tv,
-      color: '#f59e0b'
-    },
-    {
-      id: 4,
-      name: 'iPad Pro',
-      description: 'Kids Device',
-      ip: '192.168.1.108',
-      download: 3.1,
-      upload: 0.8,
-      limit: 10,
-      type: 'tablet',
-      icon: Tablet,
-      color: '#10b981'
-    }
-  ])
-
+  const [devices, setDevices] = useState(new Map())
+  const [wsStatus, setWsStatus] = useState('connecting')
   const [showActions, setShowActions] = useState(null)
+  const wsRef = useRef(null)
+  const reconnectTimeoutRef = useRef(null)
+
+  // Helper function to map device data
+  const getDeviceInfo = (ip) => {
+    const lastOctet = parseInt(ip.split('.').pop())
+    const icons = [Monitor, Smartphone, Tv, Tablet]
+    const colors = ['#3b82f6', '#a855f7', '#f59e0b', '#10b981']
+    const types = ['desktop', 'mobile', 'tv', 'tablet']
+    const names = ['Desktop-PC', 'Mobile Device', 'Smart TV', 'Tablet']
+    
+    const index = lastOctet % 4
+    return {
+      icon: icons[index],
+      color: colors[index],
+      type: types[index],
+      name: names[index],
+      description: `Device ${lastOctet}`
+    }
+  }
+
+  // Update or add device
+  const updateDevice = (data) => {
+    setDevices(prev => {
+      const newDevices = new Map(prev)
+      const deviceInfo = getDeviceInfo(data.ip)
+      
+      newDevices.set(data.ip, {
+        id: data.ip,
+        ip: data.ip,
+        ...deviceInfo,
+        download: data.download_rate_mbps || 0,
+        upload: data.upload_rate_mbps || 0,
+        limit: data.is_limited ? 50 : 100,
+        status: data.status || 'Active',
+        lastUpdate: Date.now()
+      })
+      
+      return newDevices
+    })
+  }
+
+  // WebSocket connection
+  useEffect(() => {
+    const connectWebSocket = () => {
+      try {
+        const wsUrl = `ws://${window.location.hostname}:8080/qos/stream`
+        console.log('[WS] Connecting to:', wsUrl)
+        setWsStatus('connecting')
+        
+        const ws = new WebSocket(wsUrl)
+        wsRef.current = ws
+
+        ws.onopen = () => {
+          console.log('[WS] Connected successfully')
+          setWsStatus('connected')
+          if (reconnectTimeoutRef.current) {
+            clearTimeout(reconnectTimeoutRef.current)
+            reconnectTimeoutRef.current = null
+          }
+        }
+
+        ws.onmessage = (event) => {
+          try {
+            const data = JSON.parse(event.data)
+            console.log('[WS] Received:', data)
+            if (data.ip) {
+              updateDevice(data)
+            }
+          } catch (err) {
+            console.error('[WS] Parse error:', err)
+          }
+        }
+
+        ws.onerror = (error) => {
+          console.error('[WS] Error:', error)
+          setWsStatus('disconnected')
+        }
+
+        ws.onclose = () => {
+          console.log('[WS] Connection closed, reconnecting in 5s...')
+          setWsStatus('disconnected')
+          wsRef.current = null
+          reconnectTimeoutRef.current = setTimeout(connectWebSocket, 5000)
+        }
+      } catch (err) {
+        console.error('[WS] Connection failed:', err)
+        setWsStatus('disconnected')
+        reconnectTimeoutRef.current = setTimeout(connectWebSocket, 5000)
+      }
+    }
+
+    connectWebSocket()
+
+    // Cleanup on unmount
+    return () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+      }
+      if (wsRef.current) {
+        wsRef.current.close()
+      }
+    }
+  }, [])
+
+  // Cleanup stale devices (older than 30s)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const now = Date.now()
+      setDevices(prev => {
+        const newDevices = new Map(prev)
+        for (const [ip, device] of newDevices) {
+          if (now - device.lastUpdate > 30000) {
+            newDevices.delete(ip)
+          }
+        }
+        return newDevices
+      })
+    }, 10000)
+
+    return () => clearInterval(interval)
+  }, [])
 
   const getUsagePercentage = (download, limit) => {
     return Math.min((download / limit) * 100, 100)
@@ -66,12 +139,19 @@ const ActiveDevices = () => {
     return 'var(--green)'
   }
 
+  const devicesArray = Array.from(devices.values())
+
   return (
     <div className="active-devices-page">
       <div className="page-header">
         <div>
           <h2>Active Devices</h2>
-          <p>Manage connected devices and their bandwidth allocation</p>
+          <p>Real-time bandwidth monitoring via WebSocket • Status: <span style={{ 
+            color: wsStatus === 'connected' ? 'var(--green)' : wsStatus === 'connecting' ? 'var(--orange)' : 'var(--red)',
+            fontWeight: 'bold'
+          }}>
+            {wsStatus === 'connected' ? '● Connected' : wsStatus === 'connecting' ? '● Connecting...' : '● Disconnected'}
+          </span></p>
         </div>
         <button className="add-rule-btn">
           <Plus size={20} />
@@ -93,9 +173,16 @@ const ActiveDevices = () => {
               </tr>
             </thead>
             <tbody>
-              {devices.map((device) => {
-                const DeviceIcon = device.icon
-                const usagePercentage = getUsagePercentage(device.download, device.limit)
+              {devicesArray.length === 0 ? (
+                <tr>
+                  <td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
+                    {wsStatus === 'connected' ? 'Waiting for device data...' : 'Connecting to WebSocket...'}
+                  </td>
+                </tr>
+              ) : (
+                devicesArray.map((device) => {
+                  const DeviceIcon = device.icon
+                  const usagePercentage = getUsagePercentage(device.download, device.limit)
                 
                 return (
                   <tr key={device.id} className="device-row fade-in">
@@ -114,10 +201,10 @@ const ActiveDevices = () => {
                       <span className="ip-address">{device.ip}</span>
                     </td>
                     <td>
-                      <span className="bandwidth-value">{device.download} Mbps</span>
+                      <span className="bandwidth-value">{device.download.toFixed(4)} Mbps</span>
                     </td>
                     <td>
-                      <span className="bandwidth-value">{device.upload} Mbps</span>
+                      <span className="bandwidth-value">{device.upload.toFixed(4)} Mbps</span>
                     </td>
                     <td>
                       <div className="limit-info">
@@ -166,7 +253,8 @@ const ActiveDevices = () => {
                     </td>
                   </tr>
                 )
-              })}
+              })
+              )}
             </tbody>
           </table>
         </div>
