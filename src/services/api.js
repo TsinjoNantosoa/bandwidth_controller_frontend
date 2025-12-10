@@ -1,5 +1,7 @@
 // API Service pour communiquer avec le backend QoS
-const API_BASE_URL = 'http://localhost:8080';
+// In development, use Vite proxy (relative URLs)
+// In production, set this to your backend URL
+const API_BASE_URL = import.meta.env.PROD ? 'http://localhost:8080' : '';
 
 /**
  * Initialise la structure HTB (Hierarchical Token Bucket)
