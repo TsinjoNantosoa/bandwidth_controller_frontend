@@ -1,11 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Monitor, Smartphone, Tv, Tablet, Plus, MoreVertical, Ban, Gauge, Clock, Download } from 'lucide-react'
+import { Monitor, Smartphone, Tv, Tablet, Plus, MoreVertical, Ban, Gauge, Clock, Download, X } from 'lucide-react'
+import * as api from '../services/api'
 import './ActiveDevices.css'
 
 const ActiveDevices = () => {
   const [devices, setDevices] = useState(new Map())
   const [wsStatus, setWsStatus] = useState('connecting')
   const [showActions, setShowActions] = useState(null)
+  const [showSpeedLimitModal, setShowSpeedLimitModal] = useState(false)
+  const [selectedDevice, setSelectedDevice] = useState(null)
+  const [speedLimit, setSpeedLimit] = useState('10mbit')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState(null)
+  const [success, setSuccess] = useState(null)
   const wsRef = useRef(null)
   const reconnectTimeoutRef = useRef(null)
 
@@ -139,6 +146,46 @@ const ActiveDevices = () => {
     return 'var(--green)'
   }
 
+  const handleSetSpeedLimit = (device) => {
+    setSelectedDevice(device)
+    setSpeedLimit('10mbit')
+    setShowSpeedLimitModal(true)
+    setShowActions(null)
+    setError(null)
+    setSuccess(null)
+  }
+
+  const handleSubmitSpeedLimit = async (e) => {
+    e.preventDefault()
+    if (!selectedDevice || !speedLimit) return
+
+    setLoading(true)
+    setError(null)
+    setSuccess(null)
+
+    try {
+      const result = await api.setIPLimit(selectedDevice.ip, speedLimit)
+      setSuccess(`Speed limit ${speedLimit} applied to ${selectedDevice.ip}`)
+      console.log('IP Limit result:', result)
+      setShowSpeedLimitModal(false)
+      // Update device limit in UI
+      setDevices(prev => {
+        const newDevices = new Map(prev)
+        const device = newDevices.get(selectedDevice.ip)
+        if (device) {
+          device.limit = parseInt(speedLimit) || device.limit
+          newDevices.set(selectedDevice.ip, device)
+        }
+        return newDevices
+      })
+    } catch (err) {
+      setError(`Failed to set speed limit: ${err.message}`)
+      console.error('IP Limit error:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const devicesArray = Array.from(devices.values())
 
   return (
@@ -235,7 +282,7 @@ const ActiveDevices = () => {
                         </button>
                         {showActions === device.id && (
                           <div className="action-dropdown">
-                            <button className="action-item">
+                            <button className="action-item" onClick={() => handleSetSpeedLimit(device)}>
                               <Gauge size={16} />
                               Set Speed Limit
                             </button>
@@ -333,6 +380,218 @@ const ActiveDevices = () => {
           </div>
         </div>
       </div>
+
+      {/* Success/Error Messages */}
+      {error && (
+        <div style={{
+          position: 'fixed',
+          top: '20px',
+          right: '20px',
+          padding: '12px 16px',
+          backgroundColor: 'rgba(239, 68, 68, 0.1)',
+          border: '1px solid var(--red)',
+          borderRadius: '8px',
+          color: 'var(--red)',
+          zIndex: 1001,
+          maxWidth: '400px'
+        }}>
+          {error}
+        </div>
+      )}
+
+      {success && (
+        <div style={{
+          position: 'fixed',
+          top: '20px',
+          right: '20px',
+          padding: '12px 16px',
+          backgroundColor: 'rgba(34, 197, 94, 0.1)',
+          border: '1px solid var(--green)',
+          borderRadius: '8px',
+          color: 'var(--green)',
+          zIndex: 1001,
+          maxWidth: '400px'
+        }}>
+          {success}
+        </div>
+      )}
+
+      {/* Set Speed Limit Modal */}
+      {showSpeedLimitModal && selectedDevice && (
+        <div className="modal-overlay" onClick={() => setShowSpeedLimitModal(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+            <div className="modal-header">
+              <h3>Set Speed Limit</h3>
+              <button className="close-btn" onClick={() => setShowSpeedLimitModal(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: 'var(--bg-secondary)', borderRadius: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div className="device-icon" style={{ 
+                    backgroundColor: `${selectedDevice.color}20`, 
+                    color: selectedDevice.color,
+                    padding: '12px',
+                    borderRadius: '8px'
+                  }}>
+                    {React.createElement(selectedDevice.icon, { size: 24 })}
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{selectedDevice.name}</div>
+                    <div style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>IP: {selectedDevice.ip}</div>
+                  </div>
+                </div>
+              </div>
+
+              <form onSubmit={handleSubmitSpeedLimit}>
+                <div className="form-group">
+                  <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)', fontWeight: '500' }}>
+                    Rate Limit *
+                  </label>
+                  <input
+                    type="text"
+                    value={speedLimit}
+                    onChange={(e) => setSpeedLimit(e.target.value)}
+                    placeholder="e.g., 10mbit, 50mbit, 1gbit"
+                    required
+                    disabled={loading}
+                    style={{
+                      width: '100%',
+                      padding: '10px',
+                      backgroundColor: 'var(--card-bg)',
+                      border: '1px solid var(--border)',
+                      borderRadius: '6px',
+                      color: 'var(--text-primary)',
+                      fontSize: '14px'
+                    }}
+                  />
+                  <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                    Examples: 10mbit, 50mbit, 100mbit, 1gbit
+                  </div>
+                </div>
+
+                <div className="modal-footer" style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' }}>
+                  <button 
+                    type="button"
+                    className="cancel-btn"
+                    onClick={() => setShowSpeedLimitModal(false)}
+                    disabled={loading}
+                    style={{
+                      padding: '10px 20px',
+                      backgroundColor: 'transparent',
+                      border: '1px solid var(--border)',
+                      borderRadius: '8px',
+                      color: 'var(--text-primary)',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    type="submit"
+                    className="add-rule-btn"
+                    disabled={loading || !speedLimit}
+                    style={{
+                      padding: '10px 20px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px'
+                    }}
+                  >
+                    <Gauge size={18} />
+                    {loading ? 'Applying...' : 'Apply Limit'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <style jsx>{`
+        .modal-overlay {
+          position: fixed;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          background: rgba(0, 0, 0, 0.7);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          z-index: 1000;
+          animation: fadeIn 0.2s ease;
+        }
+
+        @keyframes fadeIn {
+          from { opacity: 0; }
+          to { opacity: 1; }
+        }
+
+        .modal-content {
+          background: var(--card-bg);
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          width: 90%;
+          max-width: 500px;
+          max-height: 90vh;
+          overflow-y: auto;
+          animation: slideUp 0.3s ease;
+        }
+
+        @keyframes slideUp {
+          from { 
+            opacity: 0;
+            transform: translateY(20px);
+          }
+          to { 
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        .modal-header {
+          padding: 20px;
+          border-bottom: 1px solid var(--border);
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+
+        .modal-header h3 {
+          margin: 0;
+          color: var(--text-primary);
+          font-size: 18px;
+          font-weight: 600;
+        }
+
+        .close-btn {
+          padding: 8px;
+          background: transparent;
+          border: none;
+          color: var(--text-secondary);
+          cursor: pointer;
+          border-radius: 6px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s;
+        }
+
+        .close-btn:hover {
+          background: var(--bg-secondary);
+          color: var(--text-primary);
+        }
+
+        .modal-body {
+          padding: 20px;
+        }
+
+        .form-group {
+          margin-bottom: 16px;
+        }
+      `}</style>
     </div>
   )
 }

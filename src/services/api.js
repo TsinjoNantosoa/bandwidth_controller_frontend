@@ -1,7 +1,7 @@
 // API Service pour communiquer avec le backend QoS
 // In development, use Vite proxy (relative URLs)
 // In production, set this to your backend URL
-const API_BASE_URL = import.meta.env.PROD ? 'http://localhost:8080' : '';
+const API_BASE_URL = import.meta.env.PROD ? 'http://10.0.0.1:8080' : '';
 
 /**
  * Initialise la structure HTB (Hierarchical Token Bucket)
@@ -104,6 +104,56 @@ export const resetShaping = async () => {
 };
 
 /**
+ * Applique une limite de débit spécifique à une IP (HTB per-IP)
+ * @param {string} ip - Adresse IP du client (ex: '10.0.0.8')
+ * @param {string} rateLimit - Limite de débit (ex: '10mbit')
+ * @returns {Promise<Object>}
+ */
+export const setIPLimit = async (ip, rateLimit) => {
+  const response = await fetch(`${API_BASE_URL}/qos/ip/limit`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      ip: ip,
+      rate_limit: rateLimit,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Unknown error' }));
+    throw new Error(error.message || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+};
+
+/**
+ * Supprime la limite de débit appliquée à une IP spécifique
+ * @param {string} ip - Adresse IP du client
+ * @returns {Promise<Object>}
+ */
+export const removeIPLimit = async (ip) => {
+  const response = await fetch(`${API_BASE_URL}/qos/ip/remove`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      ip: ip,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Unknown error' }));
+    throw new Error(error.message || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+};
+
+/**
  * Vérifie la santé du serveur backend
  * @returns {Promise<boolean>}
  */
@@ -124,5 +174,7 @@ export default {
   updateHTBGlobalLimit,
   applySimpleLimit,
   resetShaping,
+  setIPLimit,
+  removeIPLimit,
   checkBackendHealth,
 };
