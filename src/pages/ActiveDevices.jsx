@@ -13,6 +13,12 @@ const ActiveDevices = () => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
+  const [showScheduleModal, setShowScheduleModal] = useState(false)
+  const [scheduleForm, setScheduleForm] = useState({
+    startTime: '',
+    endTime: '',
+    rateLimit: ''
+  })
   const wsRef = useRef(null)
   const reconnectTimeoutRef = useRef(null)
 
@@ -186,6 +192,13 @@ const ActiveDevices = () => {
     }
   }
 
+  const handleScheduleRule = () => {
+    console.log('Schedule rule:', scheduleForm)
+    // Backend integration will be implemented by backend team
+    setShowScheduleModal(false)
+    setScheduleForm({ startTime: '', endTime: '', rateLimit: '' })
+  }
+
   const devicesArray = Array.from(devices.values())
 
   return (
@@ -326,7 +339,7 @@ const ActiveDevices = () => {
             </div>
           </div>
 
-          <div className="action-card cyan">
+          <div className="action-card cyan" onClick={() => setShowScheduleModal(true)} style={{ cursor: 'pointer' }}>
             <div className="action-icon">
               <Clock size={24} />
             </div>
@@ -588,6 +601,68 @@ const ActiveDevices = () => {
           margin-bottom: 16px;
         }
       `}</style>
+
+      {/* Schedule Rule Modal */}
+      {showScheduleModal && (
+        <div className="modal-overlay" onClick={() => setShowScheduleModal(false)}>
+          <div className="modal-container" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>
+                <Clock size={20} />
+                Schedule Rule
+              </h3>
+              <button 
+                className="modal-close" 
+                onClick={() => setShowScheduleModal(false)}
+                aria-label="Close modal"
+              >
+                <X size={20} />
+              </button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label>Start Time</label>
+                <input
+                  type="time"
+                  className="compact-input"
+                  value={scheduleForm.startTime}
+                  onChange={(e) => setScheduleForm({ ...scheduleForm, startTime: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label>End Time</label>
+                <input
+                  type="time"
+                  className="compact-input"
+                  value={scheduleForm.endTime}
+                  onChange={(e) => setScheduleForm({ ...scheduleForm, endTime: e.target.value })}
+                />
+              </div>
+              <div className="form-group">
+                <label>Rate Limit</label>
+                <input
+                  type="text"
+                  className="compact-input"
+                  placeholder="e.g., 50mbit, 100mbit"
+                  value={scheduleForm.rateLimit}
+                  onChange={(e) => setScheduleForm({ ...scheduleForm, rateLimit: e.target.value })}
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button onClick={() => setShowScheduleModal(false)}>
+                Cancel
+              </button>
+              <button 
+                onClick={handleScheduleRule}
+                disabled={!scheduleForm.startTime || !scheduleForm.endTime || !scheduleForm.rateLimit}
+              >
+                Schedule
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
