@@ -345,10 +345,6 @@ const Dashboard = () => {
                                 <Gauge size={16} />
                                 Set Speed Limit
                               </button>
-                              <button className="action-item">
-                                <Clock size={16} />
-                                Schedule Rule
-                              </button>
                               <button className="action-item danger">
                                 <Ban size={16} />
                                 Block Device
