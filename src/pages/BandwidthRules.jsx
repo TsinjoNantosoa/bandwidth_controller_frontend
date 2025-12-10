@@ -141,7 +141,7 @@ const BandwidthRules = () => {
       <div className="page-header">
         <div>
           <h2>Bandwidth Rules</h2>
-          <p>Configure and manage QoS traffic control rules</p>
+          {/* <p>Configure and manage QoS traffic control rules</p> */}
         </div>
         <div style={{ display: 'flex', gap: '10px' }}>
           <button className="add-rule-btn" onClick={() => setShowAddModal(true)}>
@@ -191,9 +191,9 @@ const BandwidthRules = () => {
           <Shield size={20} />
           HTB Global Limit Configuration
         </h3>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '15px' }}>
+        {/* <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '15px' }}>
           Backend is running in background. Update the global HTB rate limit and latency here.
-        </p>
+        </p> */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', maxWidth: '600px' }}>
           <div>
             <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)' }}>
@@ -204,14 +204,7 @@ const BandwidthRules = () => {
               value={rateLimit}
               onChange={(e) => setRateLimit(e.target.value)}
               placeholder="e.g., 50mbit, 100mbit"
-              style={{
-                width: '100%',
-                padding: '10px',
-                backgroundColor: 'var(--card-bg)',
-                border: '1px solid var(--border)',
-                borderRadius: '6px',
-                color: 'var(--text-primary)'
-              }}
+              className="compact-input"
             />
           </div>
           <div>
@@ -223,14 +216,7 @@ const BandwidthRules = () => {
               value={latency}
               onChange={(e) => setLatency(e.target.value)}
               placeholder="e.g., 50ms, 100ms"
-              style={{
-                width: '100%',
-                padding: '10px',
-                backgroundColor: 'var(--card-bg)',
-                border: '1px solid var(--border)',
-                borderRadius: '6px',
-                color: 'var(--text-primary)'
-              }}
+              className="compact-input"
             />
           </div>
         </div>
@@ -545,6 +531,21 @@ const BandwidthRules = () => {
 
         .cancel-btn:hover {
           background: var(--bg-secondary);
+        }
+
+        .compact-input {
+          width: 100%;
+          padding: 8px 10px;
+          background: var(--card-bg);
+          border: 1px solid rgba(255,255,255,0.12);
+          border-radius: 6px;
+          color: var(--text-primary);
+          font-size: 13px;
+        }
+
+        .compact-input:focus, .compact-input:focus-visible {
+          outline: 2px solid rgba(30,144,255,0.14);
+          outline-offset: 2px;
         }
       `}</style>
     </div>

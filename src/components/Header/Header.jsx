@@ -1,12 +1,22 @@
 import React, { useState } from 'react'
-import { RefreshCw, Bell, Menu, X } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
+import { RefreshCw, Bell, Menu, X, LogOut, User } from 'lucide-react'
+import { useAuth } from '../../context/AuthContext'
 import './Header.css'
 
 const Header = ({ isGatewayActive, onMenuToggle }) => {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [showUserMenu, setShowUserMenu] = useState(false)
+  const { user, logout } = useAuth()
+  const navigate = useNavigate()
 
   const handleRefresh = () => {
     window.location.reload()
+  }
+
+  const handleLogout = () => {
+    logout()
+    navigate('/login')
   }
 
   const toggleMobileMenu = () => {
@@ -45,6 +55,36 @@ const Header = ({ isGatewayActive, onMenuToggle }) => {
             <Bell size={20} />
             <span className="notification-badge">3</span>
           </button>
+
+          <div className="user-menu-container">
+            <button 
+              className="user-button"
+              onClick={() => setShowUserMenu(!showUserMenu)}
+              title={user?.username || 'User'}
+            >
+              <User size={20} />
+              <span className="user-name">{user?.username || 'User'}</span>
+            </button>
+
+            {showUserMenu && (
+              <div className="user-dropdown">
+                <div className="user-info">
+                  <div className="user-avatar">
+                    <User size={20} />
+                  </div>
+                  <div>
+                    <div className="dropdown-username">{user?.username}</div>
+                    <div className="dropdown-role">{user?.role || 'user'}</div>
+                  </div>
+                </div>
+                <div className="dropdown-divider"></div>
+                <button className="dropdown-item logout-item" onClick={handleLogout}>
+                  <LogOut size={16} />
+                  <span>Logout</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </header>
