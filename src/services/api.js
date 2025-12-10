@@ -1,7 +1,13 @@
 // API Service pour communiquer avec le backend QoS
 // In development, use Vite proxy (relative URLs)
 // In production, set this to your backend URL
-const API_BASE_URL = import.meta.env.PROD ? 'http://10.0.0.1:8080' : '';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8080';
+
+// Helper function to get auth token
+const getAuthHeader = () => {
+  const token = localStorage.getItem('qos_auth_token');
+  return token ? { 'Authorization': `Bearer ${token}` } : {};
+};
 
 /**
  * Initialise la structure HTB (Hierarchical Token Bucket)
@@ -14,6 +20,7 @@ export const setupHTB = async (totalBandwidth) => {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...getAuthHeader(),
     },
     body: JSON.stringify({
       total_bandwidth: totalBandwidth,
@@ -40,6 +47,7 @@ export const updateHTBGlobalLimit = async (rateLimit, latency = '50ms') => {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...getAuthHeader(),
     },
     body: JSON.stringify({
       rate_limit: rateLimit,
@@ -67,6 +75,7 @@ export const applySimpleLimit = async (rateLimit, latency = '50ms') => {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...getAuthHeader(),
     },
     body: JSON.stringify({
       rate_limit: rateLimit,
@@ -92,6 +101,7 @@ export const resetShaping = async () => {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...getAuthHeader(),
     },
   });
 
@@ -114,6 +124,7 @@ export const setIPLimit = async (ip, rateLimit) => {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...getAuthHeader(),
     },
     body: JSON.stringify({
       ip: ip,
@@ -139,6 +150,7 @@ export const removeIPLimit = async (ip) => {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...getAuthHeader(),
     },
     body: JSON.stringify({
       ip: ip,
