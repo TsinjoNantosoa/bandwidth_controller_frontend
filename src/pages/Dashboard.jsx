@@ -91,6 +91,12 @@ const Dashboard = () => {
   ])
 
   const [showActions, setShowActions] = useState(null)
+  const [showScheduleModal, setShowScheduleModal] = useState(false)
+  const [scheduleForm, setScheduleForm] = useState({
+    startTime: '',
+    endTime: '',
+    rateLimit: ''
+  })
 
   const getUsagePercentage = (download, limit) => {
     return Math.min((download / limit) * 100, 100)
@@ -100,6 +106,13 @@ const Dashboard = () => {
     if (percentage >= 80) return 'var(--red)'
     if (percentage >= 60) return 'var(--orange)'
     return 'var(--green)'
+  }
+
+  const handleScheduleRule = () => {
+    console.log('Schedule rule:', scheduleForm)
+    // Backend integration will be implemented by backend team
+    setShowScheduleModal(false)
+    setScheduleForm({ startTime: '', endTime: '', rateLimit: '' })
   }
 
   return (
@@ -385,7 +398,7 @@ const Dashboard = () => {
             </div>
           </div>
 
-          <div className="action-card cyan">
+          <div className="action-card cyan" onClick={() => setShowScheduleModal(true)} style={{ cursor: 'pointer' }}>
             <div className="action-icon">
               <Clock size={24} />
             </div>
@@ -435,6 +448,58 @@ const Dashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* Schedule Rule Modal */}
+      {showScheduleModal && (
+        <div className="modal-overlay" onClick={() => setShowScheduleModal(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Schedule Rule</h3>
+              <button className="close-btn" onClick={() => setShowScheduleModal(false)}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="form-group">
+                <label>Start Time</label>
+                <input
+                  type="time"
+                  value={scheduleForm.startTime}
+                  onChange={(e) => setScheduleForm({ ...scheduleForm, startTime: e.target.value })}
+                  className="compact-input"
+                />
+              </div>
+              <div className="form-group">
+                <label>End Time</label>
+                <input
+                  type="time"
+                  value={scheduleForm.endTime}
+                  onChange={(e) => setScheduleForm({ ...scheduleForm, endTime: e.target.value })}
+                  className="compact-input"
+                />
+              </div>
+              <div className="form-group">
+                <label>Rate Limit</label>
+                <input
+                  type="text"
+                  value={scheduleForm.rateLimit}
+                  onChange={(e) => setScheduleForm({ ...scheduleForm, rateLimit: e.target.value })}
+                  placeholder="e.g., 50mbit, 100mbit"
+                  className="compact-input"
+                />
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="cancel-btn" onClick={() => setShowScheduleModal(false)}>Cancel</button>
+              <button 
+                className="add-rule-btn" 
+                onClick={handleScheduleRule}
+                disabled={!scheduleForm.startTime || !scheduleForm.endTime || !scheduleForm.rateLimit}
+              >
+                Schedule
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
