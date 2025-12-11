@@ -417,7 +417,6 @@
 
 .action-dropdown {
   position: absolute;
-  top: 100%;
   right: 0;
   margin-top: 8px;
   background-color: var(--bg-card);
@@ -428,6 +427,18 @@
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
   z-index: 10;
   animation: fadeIn 0.2s ease;
+}
+
+/* Default: show dropdown below button */
+.action-dropdown:not(.dropdown-up) {
+  top: 100%;
+}
+
+/* Show dropdown above button for last items */
+.action-dropdown.dropdown-up {
+  bottom: 100%;
+  margin-top: 0;
+  margin-bottom: 8px;
 }
 
 .action-item {

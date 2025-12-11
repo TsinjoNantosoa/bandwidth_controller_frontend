@@ -1,26 +1,31 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Monitor, Smartphone, Tv, Tablet, Plus, MoreVertical, Ban, Gauge, Clock, Download, X } from 'lucide-react'
+import { Monitor, Smartphone, Tv, Tablet, Plus, MoreVertical, Ban, Gauge, Clock, Download } from 'lucide-react'
 import * as api from '../services/api'
+import ScheduleRuleModal from '../components/ScheduleRuleModal'
+import GlobalBandwidthModal from '../components/GlobalBandwidthModal'
 import './ActiveDevices.css'
 
 const ActiveDevices = () => {
   const [devices, setDevices] = useState(new Map())
+  const [blockedDevices, setBlockedDevices] = useState(new Set())
   const [wsStatus, setWsStatus] = useState('connecting')
   const [showActions, setShowActions] = useState(null)
-  const [showSpeedLimitModal, setShowSpeedLimitModal] = useState(false)
+  const [showGlobalBandwidthModal, setShowGlobalBandwidthModal] = useState(false)
+  const [showIPLimitModal, setShowIPLimitModal] = useState(false)
   const [selectedDevice, setSelectedDevice] = useState(null)
   const [speedLimit, setSpeedLimit] = useState('10mbit')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
   const [showScheduleModal, setShowScheduleModal] = useState(false)
-  const [scheduleForm, setScheduleForm] = useState({
-    startTime: '',
-    endTime: '',
-    rateLimit: ''
-  })
   const wsRef = useRef(null)
   const reconnectTimeoutRef = useRef(null)
+  const devicesRef = useRef(new Map()) // Ref pour éviter les problèmes de closure
+
+  // Sync devices state with ref
+  useEffect(() => {
+    devicesRef.current = devices
+  }, [devices])
 
   // Helper function to map device data
   const getDeviceInfo = (ip) => {
@@ -40,28 +45,7 @@ const ActiveDevices = () => {
     }
   }
 
-  // Update or add device
-  const updateDevice = (data) => {
-    setDevices(prev => {
-      const newDevices = new Map(prev)
-      const deviceInfo = getDeviceInfo(data.ip)
-      
-      newDevices.set(data.ip, {
-        id: data.ip,
-        ip: data.ip,
-        ...deviceInfo,
-        download: data.download_rate_mbps || 0,
-        upload: data.upload_rate_mbps || 0,
-        limit: data.is_limited ? 50 : 100,
-        status: data.status || 'Active',
-        lastUpdate: Date.now()
-      })
-      
-      return newDevices
-    })
-  }
-
-  // WebSocket connection
+  // WebSocket connection - utilise useCallback pour éviter les recreations
   useEffect(() => {
     const connectWebSocket = () => {
       try {
@@ -85,8 +69,64 @@ const ActiveDevices = () => {
           try {
             const data = JSON.parse(event.data)
             console.log('[WS] Received:', data)
-            if (data.ip) {
-              updateDevice(data)
+            
+            // Le backend envoie { type: "ip", ip_stat: {...} } ou { type: "global", global_stat: {...} }
+            if (data.type === 'ip' && data.ip_stat) {
+              // Utilise setDevices avec callback pour éviter problèmes de closure
+              setDevices(prev => {
+                const newDevices = new Map(prev)
+                const deviceInfo = getDeviceInfo(data.ip_stat.ip)
+                
+                // Parse bandwidth_limit: si vide/null = sous limite globale uniquement
+                let limitValue = null
+                if (data.ip_stat.bandwidth_limit && data.ip_stat.bandwidth_limit.trim() !== '') {
+                  // Limite explicite définie - extraire le nombre
+                  const match = data.ip_stat.bandwidth_limit.match(/([0-9.]+)/)
+                  if (match) {
+                    limitValue = parseFloat(match[1])
+                  }
+                }
+                
+                newDevices.set(data.ip_stat.ip, {
+                  id: data.ip_stat.ip,
+                  ip: data.ip_stat.ip,
+                  ...deviceInfo,
+                  download: data.ip_stat.download_rate_mbps || 0,
+                  upload: data.ip_stat.upload_rate_mbps || 0,
+                  limit: limitValue, // null = global, number = limite explicite
+                  status: data.ip_stat.status || 'Active',
+                  lastUpdate: Date.now()
+                })
+                
+                return newDevices
+              })
+            } else if (data.ip) {
+              // Fallback pour l'ancien format
+              setDevices(prev => {
+                const newDevices = new Map(prev)
+                const deviceInfo = getDeviceInfo(data.ip)
+                
+                let limitValue = null
+                if (data.bandwidth_limit && data.bandwidth_limit.trim() !== '') {
+                  const match = data.bandwidth_limit.match(/([0-9.]+)/)
+                  if (match) {
+                    limitValue = parseFloat(match[1])
+                  }
+                }
+                
+                newDevices.set(data.ip, {
+                  id: data.ip,
+                  ip: data.ip,
+                  ...deviceInfo,
+                  download: data.download_rate_mbps || 0,
+                  upload: data.upload_rate_mbps || 0,
+                  limit: limitValue,
+                  status: data.status || 'Active',
+                  lastUpdate: Date.now()
+                })
+                
+                return newDevices
+              })
             }
           } catch (err) {
             console.error('[WS] Parse error:', err)
@@ -122,7 +162,7 @@ const ActiveDevices = () => {
         wsRef.current.close()
       }
     }
-  }, [])
+  }, []) // Pas de dépendances - ne se reconnecte qu'au mount
 
   // Cleanup stale devices (older than 30s)
   useEffect(() => {
@@ -143,6 +183,7 @@ const ActiveDevices = () => {
   }, [])
 
   const getUsagePercentage = (download, limit) => {
+    if (!limit || limit === 0) return 0 // Pas de limite explicite ou limit=0
     return Math.min((download / limit) * 100, 100)
   }
 
@@ -152,16 +193,28 @@ const ActiveDevices = () => {
     return 'var(--green)'
   }
 
-  const handleSetSpeedLimit = (device) => {
-    setSelectedDevice(device)
-    setSpeedLimit('10mbit')
-    setShowSpeedLimitModal(true)
+  const handleSetGlobalBandwidth = () => {
+    setShowGlobalBandwidthModal(true)
     setShowActions(null)
     setError(null)
     setSuccess(null)
   }
 
-  const handleSubmitSpeedLimit = async (e) => {
+  const handleGlobalBandwidthSuccess = (message) => {
+    setSuccess(message)
+    setTimeout(() => setSuccess(null), 3000)
+  }
+
+  const handleSetIPLimit = (device) => {
+    setSelectedDevice(device)
+    setSpeedLimit('10mbit')
+    setShowIPLimitModal(true)
+    setShowActions(null)
+    setError(null)
+    setSuccess(null)
+  }
+
+  const handleSubmitIPLimit = async (e) => {
     e.preventDefault()
     if (!selectedDevice || !speedLimit) return
 
@@ -170,10 +223,9 @@ const ActiveDevices = () => {
     setSuccess(null)
 
     try {
-      const result = await api.setIPLimit(selectedDevice.ip, speedLimit)
+      await api.setIPLimit(selectedDevice.ip, speedLimit)
       setSuccess(`Speed limit ${speedLimit} applied to ${selectedDevice.ip}`)
-      console.log('IP Limit result:', result)
-      setShowSpeedLimitModal(false)
+      setShowIPLimitModal(false)
       // Update device limit in UI
       setDevices(prev => {
         const newDevices = new Map(prev)
@@ -185,21 +237,110 @@ const ActiveDevices = () => {
         return newDevices
       })
     } catch (err) {
-      setError(`Failed to set speed limit: ${err.message}`)
-      console.error('IP Limit error:', err)
+      setError(`Failed to set IP limit: ${err.message}`)
     } finally {
       setLoading(false)
     }
   }
 
-  const handleScheduleRule = () => {
-    console.log('Schedule rule:', scheduleForm)
-    // Backend integration will be implemented by backend team
-    setShowScheduleModal(false)
-    setScheduleForm({ startTime: '', endTime: '', rateLimit: '' })
+  const handleScheduleSuccess = (message) => {
+    setSuccess(message)
+    setTimeout(() => setSuccess(null), 3000)
   }
 
+  const handleBlockDevice = async (device) => {
+    if (!device) return
+    
+    setLoading(true)
+    setError(null)
+    setSuccess(null)
+    setShowActions(null)
+
+    try {
+      await api.blockDevice(device.ip)
+      setSuccess(`Device ${device.ip} blocked successfully`)
+      setBlockedDevices(prev => new Set([...prev, device.ip]))
+      
+      // Update device status in UI
+      setDevices(prev => {
+        const newDevices = new Map(prev)
+        const dev = newDevices.get(device.ip)
+        if (dev) {
+          dev.blocked = true
+          newDevices.set(device.ip, dev)
+        }
+        return newDevices
+      })
+    } catch (err) {
+      setError(`Failed to block device: ${err.message}`)
+      console.error('Block device error:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleUnblockDevice = async (device) => {
+    if (!device) return
+    
+    setLoading(true)
+    setError(null)
+    setSuccess(null)
+    setShowActions(null)
+
+    try {
+      await api.unblockDevice(device.ip)
+      setSuccess(`Device ${device.ip} unblocked successfully`)
+      setBlockedDevices(prev => {
+        const newSet = new Set(prev)
+        newSet.delete(device.ip)
+        return newSet
+      })
+      
+      // Update device status in UI
+      setDevices(prev => {
+        const newDevices = new Map(prev)
+        const dev = newDevices.get(device.ip)
+        if (dev) {
+          dev.blocked = false
+          newDevices.set(device.ip, dev)
+        }
+        return newDevices
+      })
+    } catch (err) {
+      setError(`Failed to unblock device: ${err.message}`)
+      console.error('Unblock device error:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Check blocked status for all devices on mount
+  useEffect(() => {
+    const checkBlockedDevices = async () => {
+      const ips = Array.from(devices.keys())
+      const blocked = new Set()
+      
+      for (const ip of ips) {
+        try {
+          const status = await api.getDeviceStatus(ip)
+          if (status.blocked) {
+            blocked.add(ip)
+          }
+        } catch (err) {
+          console.error(`Failed to check status for ${ip}:`, err)
+        }
+      }
+      
+      setBlockedDevices(blocked)
+    }
+
+    if (devices.size > 0) {
+      checkBlockedDevices()
+    }
+  }, [devices.size])
+
   const devicesArray = Array.from(devices.values())
+  const blockedDevicesArray = devicesArray.filter(d => blockedDevices.has(d.ip))
 
   return (
     <div className="active-devices-page">
@@ -213,10 +354,6 @@ const ActiveDevices = () => {
             {wsStatus === 'connected' ? '● Connected' : wsStatus === 'connecting' ? '● Connecting...' : '● Disconnected'}
           </span></p>
         </div>
-        <button className="add-rule-btn">
-          <Plus size={20} />
-          Add Rule
-        </button>
       </div>
 
       <div className="devices-container">
@@ -240,9 +377,10 @@ const ActiveDevices = () => {
                   </td>
                 </tr>
               ) : (
-                devicesArray.map((device) => {
+                devicesArray.map((device, index) => {
                   const DeviceIcon = device.icon
                   const usagePercentage = getUsagePercentage(device.download, device.limit)
+                  const isLastTwo = index >= devicesArray.length - 2
                 
                 return (
                   <tr key={device.id} className="device-row fade-in">
@@ -268,41 +406,65 @@ const ActiveDevices = () => {
                     </td>
                     <td>
                       <div className="limit-info">
-                        <div className="limit-badge" style={{ 
-                          backgroundColor: `${getUsageColor(usagePercentage)}20`,
-                          color: getUsageColor(usagePercentage)
-                        }}>
-                          {device.limit} Mbps
-                        </div>
-                        <div className="usage-bar">
-                          <div 
-                            className="usage-fill" 
-                            style={{ 
-                              width: `${usagePercentage}%`,
-                              backgroundColor: getUsageColor(usagePercentage)
-                            }}
-                          />
-                        </div>
+                        {device.limit === null ? (
+                          <div className="limit-badge" style={{ 
+                            backgroundColor: 'var(--bg-secondary)',
+                            color: 'var(--text-secondary)'
+                          }}>
+                            Global
+                          </div>
+                        ) : (
+                          <>
+                            <div className="limit-badge" style={{ 
+                              backgroundColor: `${getUsageColor(usagePercentage)}20`,
+                              color: getUsageColor(usagePercentage)
+                            }}>
+                              {device.limit} Mbps
+                            </div>
+                            <div className="usage-bar">
+                              <div 
+                                className="usage-fill" 
+                                style={{ 
+                                  width: `${usagePercentage}%`,
+                                  backgroundColor: getUsageColor(usagePercentage)
+                                }}
+                              />
+                            </div>
+                          </>
+                        )}
                       </div>
                     </td>
                     <td>
                       <div className="action-menu">
                         <button 
-                          className="action-button"
+                          className={`action-button ${blockedDevices.has(device.ip) ? 'blocked' : ''}`}
                           onClick={() => setShowActions(showActions === device.id ? null : device.id)}
                         >
                           <MoreVertical size={18} />
                         </button>
                         {showActions === device.id && (
-                          <div className="action-dropdown">
-                            <button className="action-item" onClick={() => handleSetSpeedLimit(device)}>
+                          <div className={`action-dropdown ${isLastTwo ? 'dropdown-up' : ''}`}>
+                            <button className="action-item" onClick={() => handleSetIPLimit(device)}>
                               <Gauge size={16} />
-                              Set Speed Limit
+                              Set IP Speed Limit
                             </button>
-                            <button className="action-item danger">
-                              <Ban size={16} />
-                              Block Device
-                            </button>
+                            {blockedDevices.has(device.ip) ? (
+                              <button 
+                                className="action-item success" 
+                                onClick={() => handleUnblockDevice(device)}
+                              >
+                                <Ban size={16} />
+                                Unblock Device
+                              </button>
+                            ) : (
+                              <button 
+                                className="action-item danger" 
+                                onClick={() => handleBlockDevice(device)}
+                              >
+                                <Ban size={16} />
+                                Block Device
+                              </button>
+                            )}
                           </div>
                         )}
                       </div>
@@ -319,23 +481,14 @@ const ActiveDevices = () => {
         <div className="quick-actions-panel">
           <h3>Quick Actions</h3>
           
-          <div className="action-card blue">
-            <div className="action-icon">
-              <Ban size={24} />
-            </div>
-            <div className="action-content">
-              <div className="action-title">Block Device</div>
-              <div className="action-description">Restrict network access</div>
-            </div>
-          </div>
 
-          <div className="action-card purple">
+          <div className="action-card purple" onClick={handleSetGlobalBandwidth} style={{ cursor: 'pointer' }}>
             <div className="action-icon">
               <Gauge size={24} />
             </div>
             <div className="action-content">
-              <div className="action-title">Set Speed Limit</div>
-              <div className="action-description">Configure bandwidth cap</div>
+              <div className="action-title">Set Global Bandwidth</div>
+              <div className="action-description">Configure global limit</div>
             </div>
           </div>
 
@@ -349,7 +502,52 @@ const ActiveDevices = () => {
             </div>
           </div>
 
-          <div className="action-card green">
+          {/* Blocked Devices Section */}
+          {blockedDevicesArray.length > 0 && (
+            <div className="blocked-devices-section">
+              <h4 style={{ 
+                display: 'flex', 
+                alignItems: 'center', 
+                gap: '8px',
+                color: 'var(--red)',
+                marginBottom: '12px',
+                fontSize: '14px'
+              }}>
+                <Ban size={18} />
+                Blocked Devices ({blockedDevicesArray.length})
+              </h4>
+              <div className="blocked-devices-list">
+                {blockedDevicesArray.map((device) => {
+                  const DeviceIcon = device.icon
+                  return (
+                    <div key={device.ip} className="blocked-device-item">
+                      <div className="device-info-compact">
+                        <div className="device-icon-small" style={{ 
+                          backgroundColor: `${device.color}20`, 
+                          color: device.color 
+                        }}>
+                          <DeviceIcon size={16} />
+                        </div>
+                        <div>
+                          <div className="device-name-small">{device.name}</div>
+                          <div className="device-ip-small">{device.ip}</div>
+                        </div>
+                      </div>
+                      <button 
+                        className="unblock-btn"
+                        onClick={() => handleUnblockDevice(device)}
+                        disabled={loading}
+                      >
+                        Unblock
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+
+      {/*     <div className="action-card green">
             <div className="action-icon">
               <Download size={24} />
             </div>
@@ -357,10 +555,10 @@ const ActiveDevices = () => {
               <div className="action-title">Export Logs</div>
               <div className="action-description">Download traffic data</div>
             </div>
-          </div>
+          </div> */}
 
           {/* System Status */}
-          <div className="system-status">
+         {/*  <div className="system-status">
             <h4>System Status</h4>
             
             <div className="status-item">
@@ -386,7 +584,7 @@ const ActiveDevices = () => {
               </div>
               <div className="status-value">72%</div>
             </div>
-          </div>
+          </div> */}
         </div>
       </div>
 
@@ -412,7 +610,7 @@ const ActiveDevices = () => {
         <div style={{
           position: 'fixed',
           top: '20px',
-          right: '20px',
+          right: '40vw',
           padding: '12px 16px',
           backgroundColor: 'rgba(34, 197, 94, 0.1)',
           border: '1px solid var(--green)',
@@ -425,18 +623,79 @@ const ActiveDevices = () => {
         </div>
       )}
 
-      {/* Set Speed Limit Modal */}
-      {showSpeedLimitModal && selectedDevice && (
-        <div className="modal-overlay" onClick={() => setShowSpeedLimitModal(false)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
-            <div className="modal-header">
-              <h3>Set Speed Limit</h3>
-              <button className="close-btn" onClick={() => setShowSpeedLimitModal(false)}>
-                <X size={20} />
+      {/* Device IP Limit Modal */}
+      {showIPLimitModal && selectedDevice && (
+        <div 
+          className="modal-overlay" 
+          onClick={() => setShowIPLimitModal(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000,
+            animation: 'fadeIn 0.2s ease'
+          }}
+        >
+          <div 
+            className="modal-content" 
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'var(--card-bg)',
+              border: '1px solid var(--border)',
+              borderRadius: '12px',
+              width: '90%',
+              maxWidth: '500px',
+              maxHeight: '90vh',
+              overflow: 'hidden',
+              animation: 'slideUp 0.3s ease'
+            }}
+          >
+            <div 
+              className="modal-header"
+              style={{
+                padding: '20px',
+                borderBottom: '1px solid var(--border)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}
+            >
+              <h3 style={{ margin: 0, color: 'var(--text-primary)', fontSize: '18px', fontWeight: '600' }}>
+                Set IP Speed Limit
+              </h3>
+              <button 
+                className="close-btn"
+                onClick={() => setShowIPLimitModal(false)}
+                style={{
+                  padding: '8px',
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  borderRadius: '6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.2s'
+                }}
+              >
+                ×
               </button>
             </div>
-            <div className="modal-body">
-              <div style={{ marginBottom: '20px', padding: '12px', backgroundColor: 'var(--bg-secondary)', borderRadius: '8px' }}>
+
+            <div className="modal-body" style={{ padding: '20px' }}>
+              <div style={{ 
+                marginBottom: '20px', 
+                padding: '12px', 
+                backgroundColor: 'var(--bg-secondary)', 
+                borderRadius: '8px' 
+              }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                   <div className="device-icon" style={{ 
                     backgroundColor: `${selectedDevice.color}20`, 
@@ -447,22 +706,32 @@ const ActiveDevices = () => {
                     {React.createElement(selectedDevice.icon, { size: 24 })}
                   </div>
                   <div>
-                    <div style={{ fontWeight: '600', color: 'var(--text-primary)' }}>{selectedDevice.name}</div>
-                    <div style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>IP: {selectedDevice.ip}</div>
+                    <div style={{ fontWeight: '600', color: 'var(--text-primary)' }}>
+                      {selectedDevice.name}
+                    </div>
+                    <div style={{ fontSize: '14px', color: 'var(--text-secondary)' }}>
+                      IP: {selectedDevice.ip}
+                    </div>
                   </div>
                 </div>
               </div>
 
-              <form onSubmit={handleSubmitSpeedLimit}>
-                <div className="form-group">
-                  <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-secondary)', fontWeight: '500' }}>
+              <form onSubmit={handleSubmitIPLimit}>
+                <div className="form-group" style={{ marginBottom: '16px' }}>
+                  <label style={{ 
+                    display: 'block', 
+                    marginBottom: '8px', 
+                    color: 'var(--text-secondary)', 
+                    fontWeight: '500',
+                    fontSize: '14px'
+                  }}>
                     Rate Limit *
                   </label>
                   <input
                     type="text"
                     value={speedLimit}
                     onChange={(e) => setSpeedLimit(e.target.value)}
-                    placeholder="e.g., 10mbit, 50mbit, 1gbit"
+                    placeholder="e.g., 10mbit, 50mbit, 100mbit"
                     required
                     disabled={loading}
                     style={{
@@ -476,15 +745,23 @@ const ActiveDevices = () => {
                     }}
                   />
                   <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-secondary)' }}>
-                    Examples: 10mbit, 50mbit, 100mbit, 1gbit
+                    This limit applies only to {selectedDevice.ip}
                   </div>
                 </div>
 
-                <div className="modal-footer" style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '20px' }}>
+                <div 
+                  className="modal-footer" 
+                  style={{ 
+                    display: 'flex', 
+                    gap: '10px', 
+                    justifyContent: 'flex-end',
+                    marginTop: '20px'
+                  }}
+                >
                   <button 
                     type="button"
                     className="cancel-btn"
-                    onClick={() => setShowSpeedLimitModal(false)}
+                    onClick={() => setShowIPLimitModal(false)}
                     disabled={loading}
                     style={{
                       padding: '10px 20px',
@@ -492,7 +769,8 @@ const ActiveDevices = () => {
                       border: '1px solid var(--border)',
                       borderRadius: '8px',
                       color: 'var(--text-primary)',
-                      cursor: 'pointer'
+                      cursor: 'pointer',
+                      fontSize: '14px'
                     }}
                   >
                     Cancel
@@ -505,7 +783,15 @@ const ActiveDevices = () => {
                       padding: '10px 20px',
                       display: 'flex',
                       alignItems: 'center',
-                      gap: '8px'
+                      gap: '8px',
+                      background: 'linear-gradient(135deg, var(--blue), var(--purple))',
+                      border: 'none',
+                      borderRadius: '8px',
+                      color: 'white',
+                      cursor: loading ? 'not-allowed' : 'pointer',
+                      fontSize: '14px',
+                      fontWeight: '500',
+                      opacity: loading || !speedLimit ? 0.6 : 1
                     }}
                   >
                     <Gauge size={18} />
@@ -518,151 +804,19 @@ const ActiveDevices = () => {
         </div>
       )}
 
-      <style jsx>{`
-        .modal-overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background: rgba(0, 0, 0, 0.7);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          z-index: 1000;
-          animation: fadeIn 0.2s ease;
-        }
-
-        @keyframes fadeIn {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
-
-        .modal-content {
-          background: var(--card-bg);
-          border: 1px solid var(--border);
-          border-radius: 12px;
-          width: 90%;
-          max-width: 500px;
-          max-height: 90vh;
-          overflow-y: auto;
-          animation: slideUp 0.3s ease;
-        }
-
-        @keyframes slideUp {
-          from { 
-            opacity: 0;
-            transform: translateY(20px);
-          }
-          to { 
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-
-        .modal-header {
-          padding: 20px;
-          border-bottom: 1px solid var(--border);
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
-
-        .modal-header h3 {
-          margin: 0;
-          color: var(--text-primary);
-          font-size: 18px;
-          font-weight: 600;
-        }
-
-        .close-btn {
-          padding: 8px;
-          background: transparent;
-          border: none;
-          color: var(--text-secondary);
-          cursor: pointer;
-          border-radius: 6px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          transition: all 0.2s;
-        }
-
-        .close-btn:hover {
-          background: var(--bg-secondary);
-          color: var(--text-primary);
-        }
-
-        .modal-body {
-          padding: 20px;
-        }
-
-        .form-group {
-          margin-bottom: 16px;
-        }
-      `}</style>
+      {/* Global Bandwidth Modal */}
+      <GlobalBandwidthModal 
+        isOpen={showGlobalBandwidthModal}
+        onClose={() => setShowGlobalBandwidthModal(false)}
+        onSuccess={handleGlobalBandwidthSuccess}
+      />
 
       {/* Schedule Rule Modal */}
-      {showScheduleModal && (
-        <div className="modal-overlay" onClick={() => setShowScheduleModal(false)}>
-          <div className="modal-container" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>
-                <Clock size={20} />
-                Schedule Rule
-              </h3>
-              <button 
-                className="modal-close" 
-                onClick={() => setShowScheduleModal(false)}
-                aria-label="Close modal"
-              >
-                <X size={20} />
-              </button>
-            </div>
-            <div className="modal-body">
-              <div className="form-group">
-                <label>Start Time</label>
-                <input
-                  type="time"
-                  className="compact-input"
-                  value={scheduleForm.startTime}
-                  onChange={(e) => setScheduleForm({ ...scheduleForm, startTime: e.target.value })}
-                />
-              </div>
-              <div className="form-group">
-                <label>End Time</label>
-                <input
-                  type="time"
-                  className="compact-input"
-                  value={scheduleForm.endTime}
-                  onChange={(e) => setScheduleForm({ ...scheduleForm, endTime: e.target.value })}
-                />
-              </div>
-              <div className="form-group">
-                <label>Rate Limit</label>
-                <input
-                  type="text"
-                  className="compact-input"
-                  placeholder="e.g., 50mbit, 100mbit"
-                  value={scheduleForm.rateLimit}
-                  onChange={(e) => setScheduleForm({ ...scheduleForm, rateLimit: e.target.value })}
-                />
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button onClick={() => setShowScheduleModal(false)}>
-                Cancel
-              </button>
-              <button 
-                onClick={handleScheduleRule}
-                disabled={!scheduleForm.startTime || !scheduleForm.endTime || !scheduleForm.rateLimit}
-              >
-                Schedule
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ScheduleRuleModal 
+        isOpen={showScheduleModal}
+        onClose={() => setShowScheduleModal(false)}
+        onSuccess={handleScheduleSuccess}
+      />
     </div>
   )
 }

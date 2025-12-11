@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Lock, User, AlertCircle } from 'lucide-react';
-import * as authService from '../services/auth';
+import { useAuth } from '../context/AuthContext';
 
 const Login = () => {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -16,7 +17,7 @@ const Login = () => {
     setLoading(true);
 
     try {
-      await authService.login(username, password);
+      await login(username, password);
       // Redirect to dashboard after successful login
       navigate('/');
     } catch (err) {
@@ -34,7 +35,7 @@ const Login = () => {
             <div className="logo-container">
               <Lock size={40} />
             </div>
-            <h1>QoS Controller</h1>
+            <h1>BandwidthCtrl</h1>
             <p>Sign in to manage bandwidth rules</p>
           </div>
 

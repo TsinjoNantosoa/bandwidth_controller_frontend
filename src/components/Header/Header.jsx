@@ -51,11 +51,6 @@ const Header = ({ isGatewayActive, onMenuToggle }) => {
             <span>Refresh</span>
           </button>
 
-          <button className="icon-button notification-button" title="Notifications">
-            <Bell size={20} />
-            <span className="notification-badge">3</span>
-          </button>
-
           <div className="user-menu-container">
             <button 
               className="user-button"

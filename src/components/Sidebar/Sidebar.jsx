@@ -3,7 +3,8 @@ import { NavLink } from 'react-router-dom'
 import { 
   LayoutDashboard, 
   Monitor, 
-  Gauge, 
+  Gauge,
+  Calendar,
   History, 
   Shield, 
   Bell, 
@@ -18,11 +19,12 @@ const Sidebar = ({ isOpen, onClose }) => {
     { path: '/', icon: LayoutDashboard, label: 'Dashboard', section: 'main' },
     { path: '/devices', icon: Monitor, label: 'Active Devices', section: 'main' },
     { path: '/bandwidth', icon: Gauge, label: 'Bandwidth Rules', section: 'main' },
+    { path: '/scheduler', icon: Calendar, label: 'Scheduler', section: 'main' },
     { path: '/history', icon: History, label: 'Traffic History', section: 'main' },
-    { path: '/firewall', icon: Shield, label: 'Firewall Rules', section: 'main' },
-    { path: '/notifications', icon: Bell, label: 'Notifications', section: 'main' },
-    { path: '/settings', icon: Settings, label: 'Settings', section: 'system' },
-    { path: '/about', icon: Info, label: 'About', section: 'system' },
+    /* { path: '/firewall', icon: Shield, label: 'Firewall Rules', section: 'main' }, */
+/*     { path: '/notifications', icon: Bell, label: 'Notifications', section: 'main' }, */
+/*     { path: '/settings', icon: Settings, label: 'Settings', section: 'system' },
+    { path: '/about', icon: Info, label: 'About', section: 'system' }, */
   ]
 
   return (
@@ -55,7 +57,7 @@ const Sidebar = ({ isOpen, onClose }) => {
         </div>
 
         <div className="nav-section">
-          <div className="nav-section-title">SYSTEM</div>
+          {/* <div className="nav-section-title">SYSTEM</div> */}
           {menuItems.filter(item => item.section === 'system').map((item) => (
             <NavLink
               key={item.path}

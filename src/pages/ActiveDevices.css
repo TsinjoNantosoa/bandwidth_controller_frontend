@@ -192,7 +192,6 @@
 
 .action-dropdown {
   position: absolute;
-  top: 100%;
   right: 0;
   margin-top: 8px;
   background-color: var(--bg-card);
@@ -203,6 +202,18 @@
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
   z-index: 10;
   animation: fadeIn 0.2s ease;
+}
+
+/* Default: show dropdown below button */
+.action-dropdown:not(.dropdown-up) {
+  top: 100%;
+}
+
+/* Show dropdown above button for last items */
+.action-dropdown.dropdown-up {
+  bottom: 100%;
+  margin-top: 0;
+  margin-bottom: 8px;
 }
 
 .action-item {
@@ -697,4 +708,105 @@
   cursor: not-allowed;
   transform: none;
   box-shadow: none;
+}
+
+/* Blocked Device Button State */
+.action-button.blocked {
+  background-color: rgba(16, 185, 129, 0.1);
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.action-button.blocked:hover {
+  background-color: rgba(16, 185, 129, 0.2);
+}
+
+.action-item.success {
+  color: var(--green);
+}
+
+.action-item.success:hover {
+  background-color: rgba(16, 185, 129, 0.1);
+}
+
+/* Blocked Devices Section */
+.blocked-devices-section {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 16px;
+}
+
+.blocked-devices-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.blocked-device-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  background-color: rgba(239, 68, 68, 0.05);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.blocked-device-item:hover {
+  background-color: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.device-info-compact {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.device-icon-small {
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+}
+
+.device-name-small {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 2px;
+}
+
+.device-ip-small {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-family: 'Courier New', monospace;
+}
+
+.unblock-btn {
+  padding: 6px 14px;
+  background: linear-gradient(135deg, var(--green), #059669);
+  border: none;
+  border-radius: 6px;
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.unblock-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+}
+
+.unblock-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
 }

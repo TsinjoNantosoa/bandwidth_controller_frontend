@@ -7,6 +7,7 @@ import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import ActiveDevices from './pages/ActiveDevices'
 import BandwidthRules from './pages/BandwidthRules'
+import BandwidthScheduler from './pages/BandwidthScheduler'
 import TrafficHistory from './pages/TrafficHistory'
 import FirewallRules from './pages/FirewallRules'
 import Notifications from './pages/Notifications'
@@ -26,6 +27,7 @@ function App() {
                   <Route path="/" element={<Dashboard />} />
                   <Route path="/devices" element={<ActiveDevices />} />
                   <Route path="/bandwidth" element={<BandwidthRules />} />
+                  <Route path="/scheduler" element={<BandwidthScheduler />} />
                   <Route path="/history" element={<TrafficHistory />} />
                   <Route path="/firewall" element={<FirewallRules />} />
                   <Route path="/notifications" element={<Notifications />} />

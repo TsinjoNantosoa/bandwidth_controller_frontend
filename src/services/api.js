@@ -63,6 +63,29 @@ export const updateHTBGlobalLimit = async (rateLimit, latency = '50ms') => {
   return response.json();
 };
 
+// Scheduling API
+export async function getGlobalSchedule() {
+  const res = await fetch(`${API_BASE_URL}/qos/schedule/global`);
+  if (!res.ok) throw new Error('Failed to fetch schedule');
+  return res.json();
+}
+
+export async function setGlobalSchedule(rules) {
+  const res = await fetch(`${API_BASE_URL}/qos/schedule/global`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ rules }),
+  });
+  if (!res.ok) throw new Error('Failed to set schedule');
+  return res.json();
+}
+
+export async function deleteGlobalScheduleRule(id) {
+  const res = await fetch(`${API_BASE_URL}/qos/schedule/global/${id}`, { method: 'DELETE' });
+  if (!res.ok) throw new Error('Failed to delete rule');
+  return res.json();
+}
+
 /**
  * Applique une limitation simple (TBF - Token Bucket Filter)
  * Backend already knows LAN/WAN interfaces (passed at startup)
@@ -181,6 +204,73 @@ export const checkBackendHealth = async () => {
   }
 };
 
+/**
+ * Bloque un appareil (empêche l'accès à Internet)
+ * @param {string} ip - Adresse IP de l'appareil à bloquer
+ * @returns {Promise<Object>}
+ */
+export const blockDevice = async (ip) => {
+  const response = await fetch(`${API_BASE_URL}/qos/device/block`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeader(),
+    },
+    body: JSON.stringify({ ip }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Unknown error' }));
+    throw new Error(error.message || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+};
+
+/**
+ * Débloque un appareil (restaure l'accès à Internet)
+ * @param {string} ip - Adresse IP de l'appareil à débloquer
+ * @returns {Promise<Object>}
+ */
+export const unblockDevice = async (ip) => {
+  const response = await fetch(`${API_BASE_URL}/qos/device/unblock`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeader(),
+    },
+    body: JSON.stringify({ ip }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Unknown error' }));
+    throw new Error(error.message || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+};
+
+/**
+ * Vérifie si un appareil est bloqué
+ * @param {string} ip - Adresse IP de l'appareil à vérifier
+ * @returns {Promise<Object>} - { ip, blocked: boolean }
+ */
+export const getDeviceStatus = async (ip) => {
+  const response = await fetch(`${API_BASE_URL}/qos/device/status?ip=${encodeURIComponent(ip)}`, {
+    method: 'GET',
+    headers: {
+      ...getAuthHeader(),
+    },
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ message: 'Unknown error' }));
+    throw new Error(error.message || `HTTP error! status: ${response.status}`);
+  }
+
+  return response.json();
+};
+
 export default {
   setupHTB,
   updateHTBGlobalLimit,
@@ -189,4 +279,10 @@ export default {
   setIPLimit,
   removeIPLimit,
   checkBackendHealth,
+  getGlobalSchedule,
+  setGlobalSchedule,
+  deleteGlobalScheduleRule,
+  blockDevice,
+  unblockDevice,
+  getDeviceStatus,
 };

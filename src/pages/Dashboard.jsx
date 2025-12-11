@@ -1,17 +1,36 @@
 import React, { useState, useEffect } from 'react'
-import { Download, Upload, Monitor, HardDrive, TrendingUp, TrendingDown, Smartphone, Tv, Tablet, Plus, MoreVertical, Ban, Gauge, Clock } from 'lucide-react'
+import { Download, Upload, Monitor, HardDrive, TrendingUp, TrendingDown, Smartphone, Tv, Tablet, Plus, MoreVertical, Ban, Gauge, Clock, Wifi, WifiOff } from 'lucide-react'
 import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import useQoSWebSocket from '../hooks/useQoSWebSocket'
+import GlobalBandwidthModal from '../components/GlobalBandwidthModal'
+import ScheduleRuleModal from '../components/ScheduleRuleModal'
 import './Dashboard.css'
 
 const Dashboard = () => {
+  // WebSocket pour les stats en temps réel
+  const { globalStats, ipStats, connectionStatus, reconnect } = useQoSWebSocket()
+  
   const [stats, setStats] = useState({
-    downloadSpeed: 45.2,
-    uploadSpeed: 12.8,
-    activeDevices: 24,
-    devicesWithLimits: 18,
-    totalTraffic: 342,
-    trafficChange: 24
+    downloadSpeed: 0,
+    uploadSpeed: 0,
+    activeDevices: 0,
+    devicesWithLimits: 0,
+    totalTraffic: 0,
+    trafficChange: 0
   })
+
+  // Mettre à jour les stats depuis le WebSocket
+  useEffect(() => {
+    if (globalStats) {
+      setStats(prev => ({
+        ...prev,
+        downloadSpeed: globalStats.wanDownloadRate,  // Internet → Client = WAN RX (download utilisateur)
+        uploadSpeed: globalStats.lanDownloadRate,     // Client → Internet = LAN RX (upload utilisateur)
+        activeDevices: globalStats.totalActiveIPs,
+        devicesWithLimits: globalStats.totalLimitedIPs
+      }))
+    }
+  }, [globalStats])
 
   // Données pour le graphique de bande passante
   const bandwidthData = [
@@ -92,11 +111,13 @@ const Dashboard = () => {
 
   const [showActions, setShowActions] = useState(null)
   const [showScheduleModal, setShowScheduleModal] = useState(false)
-  const [scheduleForm, setScheduleForm] = useState({
-    startTime: '',
-    endTime: '',
-    rateLimit: ''
-  })
+  const [showGlobalBandwidthModal, setShowGlobalBandwidthModal] = useState(false)
+  const [showIPLimitModal, setShowIPLimitModal] = useState(false)
+  const [selectedIP, setSelectedIP] = useState(null)
+  const [speedLimit, setSpeedLimit] = useState('10mbit')
+  const [loading, setLoading] = useState(false)
+  const [success, setSuccess] = useState(null)
+  const [error, setError] = useState(null)
 
   const getUsagePercentage = (download, limit) => {
     return Math.min((download / limit) * 100, 100)
@@ -108,15 +129,91 @@ const Dashboard = () => {
     return 'var(--green)'
   }
 
-  const handleScheduleRule = () => {
-    console.log('Schedule rule:', scheduleForm)
-    // Backend integration will be implemented by backend team
-    setShowScheduleModal(false)
-    setScheduleForm({ startTime: '', endTime: '', rateLimit: '' })
+  const handleScheduleSuccess = (message) => {
+    setSuccess(message)
+    setTimeout(() => setSuccess(null), 3000)
+  }
+
+  const handleGlobalBandwidthSuccess = (message) => {
+    setSuccess(message)
+    setTimeout(() => setSuccess(null), 3000)
+  }
+
+  const handleSetIPLimit = (ip) => {
+    setSelectedIP(ip)
+    setSpeedLimit('10mbit')
+    setShowIPLimitModal(true)
+    setShowActions(null)
+    setError(null)
+    setSuccess(null)
+  }
+
+  const handleSubmitIPLimit = async (e) => {
+    e.preventDefault()
+    if (!selectedIP || !speedLimit) return
+
+    setLoading(true)
+    setError(null)
+    setSuccess(null)
+
+    try {
+      const api = await import('../services/api')
+      await api.setIPLimit(selectedIP, speedLimit)
+      setSuccess(`Speed limit ${speedLimit} applied to ${selectedIP}`)
+      setShowIPLimitModal(false)
+    } catch (err) {
+      setError(`Failed to set IP limit: ${err.message}`)
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
     <div className="dashboard">
+      {/* Connection Status Indicator */}
+      <div style={{ 
+        position: 'fixed', 
+        top: '80px', 
+        right: '20px', 
+        zIndex: 1000,
+        display: 'flex',
+        alignItems: 'center',
+        gap: '8px',
+        padding: '8px 12px',
+        borderRadius: '8px',
+        background: connectionStatus === 'connected' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(239, 68, 68, 0.1)',
+        border: `1px solid ${connectionStatus === 'connected' ? 'var(--green)' : 'var(--red)'}`,
+        color: connectionStatus === 'connected' ? 'var(--green)' : 'var(--red)',
+        fontSize: '12px',
+        fontWeight: '500'
+      }}>
+        {connectionStatus === 'connected' ? (
+          <>
+            <Wifi size={16} />
+            <span>Live</span>
+          </>
+        ) : (
+          <>
+            <WifiOff size={16} />
+            <span>Disconnected</span>
+            <button 
+              onClick={reconnect}
+              style={{
+                background: 'var(--red)',
+                color: 'white',
+                border: 'none',
+                padding: '4px 8px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '11px'
+              }}
+            >
+              Reconnect
+            </button>
+          </>
+        )}
+      </div>
+
       {/* Stats Cards */}
       <div className="stats-grid">
         <div className="stat-card blue fade-in">
@@ -129,11 +226,10 @@ const Dashboard = () => {
               <span className="live-badge">Live</span>
             </div>
             <div className="stat-value">
-              {stats.downloadSpeed} <span className="stat-unit">Mbps</span>
+              {stats.downloadSpeed.toFixed(2)} <span className="stat-unit">Mbps</span>
             </div>
-            <div className="stat-change positive">
-              <TrendingUp size={14} />
-              <span>12% from avg</span>
+            <div className="stat-info" style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+              WAN RX: {globalStats.wanDownloadRate.toFixed(2)} Mbps
             </div>
           </div>
         </div>
@@ -148,11 +244,10 @@ const Dashboard = () => {
               <span className="live-badge">Live</span>
             </div>
             <div className="stat-value">
-              {stats.uploadSpeed} <span className="stat-unit">Mbps</span>
+              {stats.uploadSpeed.toFixed(2)} <span className="stat-unit">Mbps</span>
             </div>
-            <div className="stat-change negative">
-              <TrendingDown size={14} />
-              <span>8% from avg</span>
+            <div className="stat-info" style={{ fontSize: '11px', color: 'var(--text-secondary)', marginTop: '4px' }}>
+              LAN RX: {globalStats.lanDownloadRate.toFixed(2)} Mbps
             </div>
           </div>
         </div>
@@ -170,24 +265,6 @@ const Dashboard = () => {
             </div>
             <div className="stat-info">
               {stats.devicesWithLimits} with limits
-            </div>
-          </div>
-        </div>
-
-        <div className="stat-card green fade-in" style={{ animationDelay: '0.3s' }}>
-          <div className="stat-icon">
-            <HardDrive size={24} />
-          </div>
-          <div className="stat-content">
-            <div className="stat-header">
-              <span className="stat-label">Total Traffic Today</span>
-            </div>
-            <div className="stat-value">
-              {stats.totalTraffic} <span className="stat-unit">GB</span>
-            </div>
-            <div className="stat-change positive">
-              <TrendingUp size={14} />
-              <span>{stats.trafficChange}% vs yesterday</span>
             </div>
           </div>
         </div>
@@ -241,7 +318,7 @@ const Dashboard = () => {
         </div>
 
         {/* Traffic Distribution Chart */}
-        <div className="chart-card fade-in" style={{ animationDelay: '0.5s' }}>
+   {/*      <div className="chart-card fade-in" style={{ animationDelay: '0.5s' }}>
           <div className="chart-header">
             <h3>Traffic Distribution</h3>
           </div>
@@ -281,19 +358,12 @@ const Dashboard = () => {
               ))}
             </div>
           </div>
-        </div>
+        </div> */}
       </div>
 
       {/* Active Devices and Quick Actions Section */}
       <div className="devices-section">
         <div className="devices-table-container">
-          <div className="section-header">
-            <h3>Active Devices</h3>
-            <button className="add-rule-btn">
-              <Plus size={20} />
-              Add Rule
-            </button>
-          </div>
 
           <div className="devices-table-card">
             <table className="devices-table">
@@ -301,74 +371,40 @@ const Dashboard = () => {
                 <tr>
                   <th>DEVICE</th>
                   <th>IP ADDRESS</th>
-                  <th>DOWNLOAD</th>
-                  <th>UPLOAD</th>
-                  <th>LIMIT</th>
-                  <th>ACTION</th>
                 </tr>
               </thead>
               <tbody>
-                {devices.map((device) => {
-                  const DeviceIcon = device.icon
-                  const usagePercentage = getUsagePercentage(device.download, device.limit)
-                  
-                  return (
-                    <tr key={device.id} className="device-row fade-in">
-                      <td>
-                        <div className="device-info">
-                          <div className="device-icon" style={{ backgroundColor: `${device.color}20`, color: device.color }}>
-                            <DeviceIcon size={20} />
-                          </div>
-                          <div className="device-details">
-                            <div className="device-name">{device.name}</div>
-                            <div className="device-description">{device.description}</div>
-                          </div>
-                        </div>
-                      </td>
-                      <td>
-                        <span className="ip-address">{device.ip}</span>
-                      </td>
-                      <td>
-                        <span className="bandwidth-value">{device.download} Mbps</span>
-                      </td>
-                      <td>
-                        <span className="bandwidth-value">{device.upload} Mbps</span>
-                      </td>
-                      <td>
-                        <div className="limit-info">
-                          <div className="limit-badge" style={{ 
-                            backgroundColor: `${getUsageColor(usagePercentage)}20`,
-                            color: getUsageColor(usagePercentage)
-                          }}>
-                            {device.limit} Mbps
-                          </div>
-                        </div>
-                      </td>
-                      <td>
-                        <div className="action-menu">
-                          <button 
-                            className="action-button"
-                            onClick={() => setShowActions(showActions === device.id ? null : device.id)}
-                          >
-                            <MoreVertical size={18} />
-                          </button>
-                          {showActions === device.id && (
-                            <div className="action-dropdown">
-                              <button className="action-item">
-                                <Gauge size={16} />
-                                Set Speed Limit
-                              </button>
-                              <button className="action-item danger">
-                                <Ban size={16} />
-                                Block Device
-                              </button>
+                {ipStats && ipStats.length > 0 ? (
+                  ipStats.map((device, index) => {
+                    return (
+                      <tr key={device.ip} className="device-row fade-in" style={{ animationDelay: `${index * 0.05}s` }}>
+                        <td>
+                          <div className="device-info">
+                            <div className="device-icon" style={{ 
+                              backgroundColor: device.is_limited ? 'rgba(245, 158, 11, 0.2)' : 'rgba(59, 130, 246, 0.2)', 
+                              color: device.is_limited ? 'var(--orange)' : 'var(--blue)' 
+                            }}>
+                              <Monitor size={20} />
                             </div>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
+                            <div className="device-details">
+                              <div className="device-name">{device.ip}</div>
+                              <div className="device-description">{device.status}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td>
+                          <span className="ip-address">{device.ip}</span>
+                        </td>
+                      </tr>
+                    )
+                  })
+                ) : (
+                  <tr>
+                    <td colSpan="2" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
+                      {connectionStatus === 'connected' ? 'No active devices detected' : 'Connecting to server...'}
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
@@ -377,24 +413,14 @@ const Dashboard = () => {
         {/* Quick Actions Panel */}
         <div className="quick-actions-panel">
           <h3>Quick Actions</h3>
-          
-          <div className="action-card blue">
-            <div className="action-icon">
-              <Ban size={24} />
-            </div>
-            <div className="action-content">
-              <div className="action-title">Block Device</div>
-              <div className="action-description">Restrict network access</div>
-            </div>
-          </div>
-
-          <div className="action-card purple">
+  
+          <div className="action-card purple" onClick={() => setShowGlobalBandwidthModal(true)} style={{ cursor: 'pointer' }}>
             <div className="action-icon">
               <Gauge size={24} />
             </div>
             <div className="action-content">
-              <div className="action-title">Set Speed Limit</div>
-              <div className="action-description">Configure bandwidth cap</div>
+              <div className="action-title">Set Global Bandwidth</div>
+              <div className="action-description">Configure global limit</div>
             </div>
           </div>
 
@@ -408,18 +434,8 @@ const Dashboard = () => {
             </div>
           </div>
 
-          <div className="action-card green">
-            <div className="action-icon">
-              <Download size={24} />
-            </div>
-            <div className="action-content">
-              <div className="action-title">Export Logs</div>
-              <div className="action-description">Download traffic data</div>
-            </div>
-          </div>
-
           {/* System Status */}
-          <div className="system-status">
+          {/* <div className="system-status">
             <h4>System Status</h4>
             
             <div className="status-item">
@@ -445,61 +461,185 @@ const Dashboard = () => {
               </div>
               <div className="status-value">72%</div>
             </div>
-          </div>
+          </div> */}
         </div>
       </div>
 
-      {/* Schedule Rule Modal */}
-      {showScheduleModal && (
-        <div className="modal-overlay" onClick={() => setShowScheduleModal(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Schedule Rule</h3>
-              <button className="close-btn" onClick={() => setShowScheduleModal(false)}>×</button>
-            </div>
-            <div className="modal-body">
-              <div className="form-group">
-                <label>Start Time</label>
-                <input
-                  type="time"
-                  value={scheduleForm.startTime}
-                  onChange={(e) => setScheduleForm({ ...scheduleForm, startTime: e.target.value })}
-                  className="compact-input"
-                />
-              </div>
-              <div className="form-group">
-                <label>End Time</label>
-                <input
-                  type="time"
-                  value={scheduleForm.endTime}
-                  onChange={(e) => setScheduleForm({ ...scheduleForm, endTime: e.target.value })}
-                  className="compact-input"
-                />
-              </div>
-              <div className="form-group">
-                <label>Rate Limit</label>
-                <input
-                  type="text"
-                  value={scheduleForm.rateLimit}
-                  onChange={(e) => setScheduleForm({ ...scheduleForm, rateLimit: e.target.value })}
-                  placeholder="e.g., 50mbit, 100mbit"
-                  className="compact-input"
-                />
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="cancel-btn" onClick={() => setShowScheduleModal(false)}>Cancel</button>
+      {/* Success Message */}
+      {success && (
+        <div style={{
+          position: 'fixed',
+          top: '20px',
+          right: '20px',
+          padding: '12px 16px',
+          backgroundColor: 'rgba(34, 197, 94, 0.1)',
+          border: '1px solid var(--green)',
+          borderRadius: '8px',
+          color: 'var(--green)',
+          zIndex: 1001,
+          maxWidth: '400px'
+        }}>
+          {success}
+        </div>
+      )}
+
+      {/* Error Message */}
+      {error && (
+        <div style={{
+          position: 'fixed',
+          top: '20px',
+          right: '20px',
+          padding: '12px 16px',
+          backgroundColor: 'rgba(239, 68, 68, 0.1)',
+          border: '1px solid var(--red)',
+          borderRadius: '8px',
+          color: 'var(--red)',
+          zIndex: 1001,
+          maxWidth: '400px'
+        }}>
+          {error}
+        </div>
+      )}
+
+      {/* Device IP Limit Modal */}
+      {showIPLimitModal && selectedIP && (
+        <div 
+          className="modal-overlay" 
+          onClick={() => setShowIPLimitModal(false)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.7)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 1000
+          }}
+        >
+          <div 
+            className="modal-content" 
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: 'var(--card-bg)',
+              border: '1px solid var(--border)',
+              borderRadius: '12px',
+              width: '90%',
+              maxWidth: '500px',
+              padding: '20px'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>Set IP Speed Limit</h3>
               <button 
-                className="add-rule-btn" 
-                onClick={handleScheduleRule}
-                disabled={!scheduleForm.startTime || !scheduleForm.endTime || !scheduleForm.rateLimit}
+                onClick={() => setShowIPLimitModal(false)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  fontSize: '24px'
+                }}
               >
-                Schedule
+                ×
               </button>
             </div>
+
+            <div style={{ 
+              marginBottom: '20px', 
+              padding: '12px', 
+              backgroundColor: 'var(--bg-secondary)', 
+              borderRadius: '8px' 
+            }}>
+              <div style={{ fontWeight: '600', color: 'var(--text-primary)' }}>IP Address</div>
+              <div style={{ fontSize: '14px', color: 'var(--text-secondary)', marginTop: '4px' }}>{selectedIP}</div>
+            </div>
+
+            <form onSubmit={handleSubmitIPLimit}>
+              <div style={{ marginBottom: '16px' }}>
+                <label style={{ 
+                  display: 'block', 
+                  marginBottom: '8px', 
+                  color: 'var(--text-secondary)', 
+                  fontWeight: '500',
+                  fontSize: '14px'
+                }}>
+                  Rate Limit *
+                </label>
+                <input
+                  type="text"
+                  value={speedLimit}
+                  onChange={(e) => setSpeedLimit(e.target.value)}
+                  placeholder="e.g., 10mbit, 50mbit, 100mbit"
+                  required
+                  disabled={loading}
+                  style={{
+                    width: '100%',
+                    padding: '10px',
+                    backgroundColor: 'var(--card-bg)',
+                    border: '1px solid var(--border)',
+                    borderRadius: '6px',
+                    color: 'var(--text-primary)',
+                    fontSize: '14px'
+                  }}
+                />
+                <div style={{ marginTop: '8px', fontSize: '12px', color: 'var(--text-secondary)' }}>
+                  This limit applies only to {selectedIP}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                <button 
+                  type="button"
+                  onClick={() => setShowIPLimitModal(false)}
+                  disabled={loading}
+                  style={{
+                    padding: '10px 20px',
+                    backgroundColor: 'transparent',
+                    border: '1px solid var(--border)',
+                    borderRadius: '8px',
+                    color: 'var(--text-primary)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Cancel
+                </button>
+                <button 
+                  type="submit"
+                  disabled={loading || !speedLimit}
+                  style={{
+                    padding: '10px 20px',
+                    background: 'linear-gradient(135deg, var(--blue), var(--purple))',
+                    border: 'none',
+                    borderRadius: '8px',
+                    color: 'white',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    opacity: loading || !speedLimit ? 0.6 : 1
+                  }}
+                >
+                  {loading ? 'Applying...' : 'Apply Limit'}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
+
+      {/* Global Bandwidth Modal */}
+      <GlobalBandwidthModal 
+        isOpen={showGlobalBandwidthModal}
+        onClose={() => setShowGlobalBandwidthModal(false)}
+        onSuccess={handleGlobalBandwidthSuccess}
+      />
+
+      {/* Schedule Rule Modal */}
+      <ScheduleRuleModal 
+        isOpen={showScheduleModal}
+        onClose={() => setShowScheduleModal(false)}
+        onSuccess={handleScheduleSuccess}
+      />
     </div>
   )
 }

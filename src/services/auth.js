@@ -93,7 +93,8 @@ export const isAuthenticated = () => {
   try {
     // Decode mock token to check expiration
     const payload = JSON.parse(atob(token));
-    return payload.exp > Date.now();
+    // payload.exp is in seconds, Date.now() is in milliseconds
+    return payload.exp > (Date.now() / 1000);
   } catch (error) {
     return false;
   }

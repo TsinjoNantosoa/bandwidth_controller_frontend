@@ -144,10 +144,10 @@ const BandwidthRules = () => {
           {/* <p>Configure and manage QoS traffic control rules</p> */}
         </div>
         <div style={{ display: 'flex', gap: '10px' }}>
-          <button className="add-rule-btn" onClick={() => setShowAddModal(true)}>
+{/*           <button className="add-rule-btn" onClick={() => setShowAddModal(true)}>
             <Plus size={20} />
             Add Rule
-          </button>
+          </button> */}
           <button 
             className="add-rule-btn" 
             onClick={handleResetRules}
@@ -189,7 +189,7 @@ const BandwidthRules = () => {
       <div className="card" style={{ marginBottom: '20px', padding: '20px' }}>
         <h3 style={{ marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '10px' }}>
           <Shield size={20} />
-          HTB Global Limit Configuration
+          Global Limit Configuration
         </h3>
         {/* <p style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '15px' }}>
           Backend is running in background. Update the global HTB rate limit and latency here.
@@ -226,18 +226,18 @@ const BandwidthRules = () => {
             onClick={handleUpdateHTBLimit}
             disabled={loading || !rateLimit}
           >
-            {loading ? 'Processing...' : 'Update HTB Limit'}
+            {loading ? 'Processing...' : "Set Limit"}
           </button>
         </div>
       </div>
 
-      <div className="card">
+{/*       <div className="card">
         <table className="rules-table">
           <thead>
             <tr>
               <th>NAME</th>
               <th>TYPE</th>
-              <th>BANDWIDTH</th>
+              <th>BANDWIDTH</th>w
               <th>PRIORITY</th>
               <th>STATUS</th>
               <th>ACTIONS</th>
@@ -291,7 +291,7 @@ const BandwidthRules = () => {
             ))}
           </tbody>
         </table>
-      </div>
+      </div> */}
 
       {showAddModal && (
         <div className="modal-overlay" onClick={() => setShowAddModal(false)}>
