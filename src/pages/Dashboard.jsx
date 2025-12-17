@@ -139,14 +139,6 @@ const Dashboard = () => {
     setTimeout(() => setSuccess(null), 3000)
   }
 
-  const handleSetIPLimit = (ip) => {
-    setSelectedIP(ip)
-    setSpeedLimit('10mbit')
-    setShowIPLimitModal(true)
-    setShowActions(null)
-    setError(null)
-    setSuccess(null)
-  }
 
   const handleSubmitIPLimit = async (e) => {
     e.preventDefault()
@@ -265,6 +257,24 @@ const Dashboard = () => {
             </div>
             <div className="stat-info">
               {stats.devicesWithLimits} with limits
+            </div>
+          </div>
+        </div>
+
+        <div className="stat-card green fade-in" style={{ animationDelay: '0.3s' }}>
+          <div className="stat-icon">
+            <Gauge size={24} />
+          </div>
+          <div className="stat-content">
+            <div className="stat-header">
+              <span className="stat-label">Global Bandwidth</span>
+              <span className="live-badge">Active</span>
+            </div>
+            <div className="stat-value" style={{ fontSize: '28px' }}>
+              {globalStats.globalLimit || '0'}
+            </div>
+            <div className="stat-info">
+              Current limit applied
             </div>
           </div>
         </div>

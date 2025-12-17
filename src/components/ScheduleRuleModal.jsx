@@ -20,7 +20,7 @@ const ScheduleRuleModal = ({ isOpen, onClose, onSuccess }) => {
 
   const buildCronExpression = () => {
     const { startHour, startMinute, periodicity, customDays } = formData;
-    
+
     let daysPart = '*';
     if (periodicity === 'weekdays') {
       daysPart = '1-5';
@@ -29,7 +29,7 @@ const ScheduleRuleModal = ({ isOpen, onClose, onSuccess }) => {
     } else if (periodicity === 'custom' && customDays.length > 0) {
       daysPart = customDays.join(',');
     }
-    
+
     return `${startMinute} ${startHour} * * ${daysPart}`;
   };
 
@@ -38,11 +38,11 @@ const ScheduleRuleModal = ({ isOpen, onClose, onSuccess }) => {
     const start = parseInt(startHour) * 60 + parseInt(startMinute);
     const end = parseInt(endHour) * 60 + parseInt(endMinute);
     let duration = end - start;
-    
+
     if (duration < 0) {
       duration = 1440 + duration;
     }
-    
+
     return duration;
   };
 
@@ -50,7 +50,7 @@ const ScheduleRuleModal = ({ isOpen, onClose, onSuccess }) => {
     e.preventDefault();
     try {
       setLoading(true);
-      
+
       const newRule = {
         id: formData.id,
         name: formData.name,
@@ -60,12 +60,12 @@ const ScheduleRuleModal = ({ isOpen, onClose, onSuccess }) => {
         duration: calculateDuration(),
         enabled: formData.enabled
       };
-      
+
       // Récupérer les règles existantes
       const { rules } = await api.getGlobalSchedule();
       const newRules = [...rules, newRule];
       await api.setGlobalSchedule(newRules);
-      
+
       // Réinitialiser le formulaire
       setFormData({
         id: '',
@@ -80,7 +80,7 @@ const ScheduleRuleModal = ({ isOpen, onClose, onSuccess }) => {
         customDays: [],
         enabled: true
       });
-      
+
       if (onSuccess) {
         onSuccess(`Règle "${newRule.name}" créée avec succès`);
       }
@@ -93,7 +93,7 @@ const ScheduleRuleModal = ({ isOpen, onClose, onSuccess }) => {
   };
 
   const hours = Array.from({ length: 24 }, (_, i) => i.toString().padStart(2, '0'));
-  const minutes = ['00', '15', '30', '45'];
+  const minutes = Array.from({ length: 60 }, (_, i) => i.toString().padStart(2, '0'));
   const weekDays = [
     { value: 0, label: 'Sun' },
     { value: 1, label: 'Mon' },
@@ -120,7 +120,7 @@ const ScheduleRuleModal = ({ isOpen, onClose, onSuccess }) => {
           <h3><Clock size={20} /> New scheduling rule</h3>
           <button onClick={onClose} className="btn-close">×</button>
         </div>
-        
+
         <form onSubmit={handleSubmit}>
           <div className="form-grid">
             <div className="form-group">
@@ -133,7 +133,7 @@ const ScheduleRuleModal = ({ isOpen, onClose, onSuccess }) => {
                 required
               />
             </div>
-            
+
             <div className="form-group">
               <label>Rule Name *</label>
               <input
@@ -237,14 +237,14 @@ const ScheduleRuleModal = ({ isOpen, onClose, onSuccess }) => {
 
           <div className="preview-box">
             <Clock size={16} />
-            <strong>Overview</strong> 
+            <strong>Overview</strong>
             <span>
               {formData.periodicity === 'daily' && 'Everyday'}
               {formData.periodicity === 'weekdays' && 'Monday to Friday'}
               {formData.periodicity === 'weekend' && 'Weekend'}
-              {formData.periodicity === 'custom' && formData.customDays.length > 0 && 
+              {formData.periodicity === 'custom' && formData.customDays.length > 0 &&
                 `Jours: ${formData.customDays.map(d => weekDays[d].label).join(', ')}`}
-              {formData.periodicity === 'custom' && formData.customDays.length === 0 && 
+              {formData.periodicity === 'custom' && formData.customDays.length === 0 &&
                 'Sélectionnez au moins un jour'}
             </span>
             from <strong>{formData.startHour}:{formData.startMinute}</strong> to <strong>{formData.endHour}:{formData.endMinute}</strong>
@@ -255,9 +255,9 @@ const ScheduleRuleModal = ({ isOpen, onClose, onSuccess }) => {
             <button type="button" onClick={onClose} className="btn-secondary">
               Cancel
             </button>
-            <button 
-              type="submit" 
-              className="btn-primary" 
+            <button
+              type="submit"
+              className="btn-primary"
               disabled={loading || (formData.periodicity === 'custom' && formData.customDays.length === 0)}
             >
               <Plus size={18} />

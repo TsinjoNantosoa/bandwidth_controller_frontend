@@ -16,6 +16,7 @@ export const useQoSWebSocket = () => {
     wanDownloadRate: 0,
     totalActiveIPs: 0,
     totalLimitedIPs: 0,
+    globalLimit: '0',
     timestamp: null
   });
 
@@ -63,6 +64,7 @@ export const useQoSWebSocket = () => {
               wanDownloadRate: update.global_stat.wan_download_rate_mbps || 0,
               totalActiveIPs: update.global_stat.total_active_ips || 0,
               totalLimitedIPs: update.global_stat.total_limited_ips || 0,
+              globalLimit: update.global_stat.global_limit || '0',
               timestamp: new Date(update.global_stat.timestamp)
             }));
           } else if (update.type === 'ip' && update.ip_stat) {

@@ -226,7 +226,7 @@ const ActiveDevices = () => {
       await api.setIPLimit(selectedDevice.ip, speedLimit)
       setSuccess(`Speed limit ${speedLimit} applied to ${selectedDevice.ip}`)
       setShowIPLimitModal(false)
-      // Update device limit in UI
+      
       setDevices(prev => {
         const newDevices = new Map(prev)
         const device = newDevices.get(selectedDevice.ip)
@@ -309,6 +309,36 @@ const ActiveDevices = () => {
     } catch (err) {
       setError(`Failed to unblock device: ${err.message}`)
       console.error('Unblock device error:', err)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleResetToGlobal = async (device) => {
+    if (!device) return
+    
+    setLoading(true)
+    setError(null)
+    setSuccess(null)
+    setShowActions(null)
+
+    try {
+      await api.removeIPLimit(device.ip)
+      setSuccess(`${device.ip} reset to global limit successfully`)
+      
+      // Update device in UI to show it's under global limit (limit = null)
+      setDevices(prev => {
+        const newDevices = new Map(prev)
+        const dev = newDevices.get(device.ip)
+        if (dev) {
+          dev.limit = null // null = sous limite globale
+          newDevices.set(device.ip, dev)
+        }
+        return newDevices
+      })
+    } catch (err) {
+      setError(`Failed to reset to global: ${err.message}`)
+      console.error('Reset to global error:', err)
     } finally {
       setLoading(false)
     }
@@ -448,6 +478,15 @@ const ActiveDevices = () => {
                               <Gauge size={16} />
                               Set IP Speed Limit
                             </button>
+                            {device.limit !== null && (
+                              <button 
+                                className="action-item" 
+                                onClick={() => handleResetToGlobal(device)}
+                              >
+                                <Download size={16} style={{ transform: 'rotate(180deg)' }} />
+                                Reset to Global
+                              </button>
+                            )}
                             {blockedDevices.has(device.ip) ? (
                               <button 
                                 className="action-item success" 
