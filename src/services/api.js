@@ -65,7 +65,11 @@ export const updateHTBGlobalLimit = async (rateLimit, latency = '50ms') => {
 
 // Scheduling API
 export async function getGlobalSchedule() {
-  const res = await fetch(`${API_BASE_URL}/qos/schedule/global`);
+  const res = await fetch(`${API_BASE_URL}/qos/schedule/global`, {
+    headers: {
+      ...getAuthHeader(),
+    },
+  });
   if (!res.ok) throw new Error('Failed to fetch schedule');
   return res.json();
 }
@@ -73,7 +77,10 @@ export async function getGlobalSchedule() {
 export async function setGlobalSchedule(rules) {
   const res = await fetch(`${API_BASE_URL}/qos/schedule/global`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeader(),
+    },
     body: JSON.stringify({ rules }),
   });
   if (!res.ok) throw new Error('Failed to set schedule');
@@ -81,7 +88,12 @@ export async function setGlobalSchedule(rules) {
 }
 
 export async function deleteGlobalScheduleRule(id) {
-  const res = await fetch(`${API_BASE_URL}/qos/schedule/global/${id}`, { method: 'DELETE' });
+  const res = await fetch(`${API_BASE_URL}/qos/schedule/global/${id}`, {
+    method: 'DELETE',
+    headers: {
+      ...getAuthHeader(),
+    },
+  });
   if (!res.ok) throw new Error('Failed to delete rule');
   return res.json();
 }
