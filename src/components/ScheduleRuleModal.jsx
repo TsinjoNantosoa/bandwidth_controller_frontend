@@ -343,7 +343,7 @@ const ScheduleRuleModal = ({ isOpen, onClose, onSuccess, editRule = null }) => {
               disabled={loading || (formData.periodicity === 'custom' && formData.customDays.length === 0)}
             >
               {editRule ? <Edit size={18} /> : <Plus size={18} />}
-              {loading ? (editRule ? 'Modification...' : 'Création...') : (editRule ? 'Modifier la règle' : 'Ajouter la règle')}
+              {loading ? (editRule ? 'Modification...' : 'Creation...') : (editRule ? 'Modify the rule' : 'Add the rule')}
             </button>
           </div>
         </form>
