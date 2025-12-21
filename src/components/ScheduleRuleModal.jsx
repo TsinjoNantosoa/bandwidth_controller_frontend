@@ -196,7 +196,7 @@ const ScheduleRuleModal = ({ isOpen, onClose, onSuccess, editRule = null }) => {
                 type="text"
                 value={formData.id}
                 onChange={(e) => setFormData({ ...formData, id: e.target.value })}
-                placeholder="ex: work-hours"
+                placeholder="ex: 1"
                 required
                 disabled={editRule !== null}
               />
@@ -208,7 +208,7 @@ const ScheduleRuleModal = ({ isOpen, onClose, onSuccess, editRule = null }) => {
                 type="text"
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="ex: Heures de bureau"
+                placeholder="ex: Work hours"
                 required
               />
             </div>
@@ -219,7 +219,7 @@ const ScheduleRuleModal = ({ isOpen, onClose, onSuccess, editRule = null }) => {
                 type="text"
                 value={formData.description}
                 onChange={(e) => setFormData({ ...formData, description: e.target.value })}
-                placeholder="Description optionnelle"
+                placeholder="Optional description"
               />
             </div>
 
