@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react'
 import { Monitor, Smartphone, Tv, Tablet, Plus, MoreVertical, Ban, Gauge, Clock, Download, RefreshCw } from 'lucide-react'
 import * as api from '../services/api'
-import { startIPSync } from '../services/ipSync'
+import useQoSWebSocket from '../hooks/useQoSWebSocket'
 import ScheduleRuleModal from '../components/ScheduleRuleModal'
 import GlobalBandwidthModal from '../components/GlobalBandwidthModal'
 import './ActiveDevices.css'
@@ -68,14 +68,11 @@ const detectDeviceType = (macAddress, hostname) => {
 }
 
 const ActiveDevices = () => {
+  // Use WebSocket hook for real-time data
+  const { globalStats, ipStats, connectionStatus } = useQoSWebSocket()
+  
   const [devices, setDevices] = useState(new Map())
   const [blockedDevices, setBlockedDevices] = useState(new Set())
-  const [syncState, setSyncState] = useState({
-    isConnected: false,
-    initialSyncComplete: false,
-    sequence: 0,
-    error: null,
-  })
   const [showActions, setShowActions] = useState(null)
   const [showGlobalBandwidthModal, setShowGlobalBandwidthModal] = useState(false)
   const [showIPLimitModal, setShowIPLimitModal] = useState(false)
@@ -85,7 +82,6 @@ const ActiveDevices = () => {
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
   const [showScheduleModal, setShowScheduleModal] = useState(false)
-  const syncControlRef = useRef(null)
 
   // Helper function to map device data
   const getDeviceInfo = (ip, macAddress, hostname) => {
@@ -124,102 +120,72 @@ const ActiveDevices = () => {
     }
   }
 
-  // IP Sync with IndexedDB persistence
+  // Update devices from WebSocket ipStats
   useEffect(() => {
-    console.log('[ActiveDevices] Starting IP sync with IndexedDB')
-    
-    const handleSyncUpdate = (state) => {
-      console.log('[ActiveDevices] Sync update:', {
-        ipCount: state.ips.length,
-        sequence: state.sequence,
-        initialSyncComplete: state.initialSyncComplete,
-        isConnected: state.isConnected,
-      })
+    if (!ipStats || ipStats.size === 0) {
+      console.log('[ActiveDevices] No ipStats available yet')
+      return
+    }
 
-      // Update sync state
-      setSyncState({
-        isConnected: state.isConnected,
-        initialSyncComplete: state.initialSyncComplete,
-        sequence: state.sequence,
-        error: state.error,
-      })
+    console.log('[ActiveDevices] Updating from WebSocket, IP count:', ipStats.size)
 
-      // Only update devices that actually changed (optimization)
-      setDevices(prev => {
-        const newDevices = new Map(prev)
-        let hasChanges = false
+    setDevices(prev => {
+      const newDevices = new Map(prev)
+      let hasChanges = false
 
-        state.ips.forEach(ipStat => {
-          const ip = ipStat.ip || ipStat.IP
-          if (!ip) return
+      // Process all IPs from WebSocket
+      ipStats.forEach((ipStat, ip) => {
+        if (!ip) return
 
-          // Extract MAC and hostname from backend
-          const macAddress = ipStat.mac_address || ipStat.MACAddress || ''
-          const hostname = ipStat.hostname || ipStat.Hostname || ''
-          
-          const deviceInfo = getDeviceInfo(ip, macAddress, hostname)
-          
-          // Parse bandwidth limit
-          let limitValue = null
-          const bandwidthLimit = ipStat.bandwidth_limit || ipStat.BandwidthLimit
-          if (bandwidthLimit && bandwidthLimit.trim() !== '') {
-            const match = bandwidthLimit.match(/([0-9.]+)/)
-            if (match) {
-              limitValue = parseFloat(match[1])
-            }
-          }
-
-          const newDevice = {
-            id: ip,
-            ip: ip,
-            ...deviceInfo,
-            download: ipStat.download_rate_mbps || ipStat.DownloadRate || 0,
-            upload: ipStat.upload_rate_mbps || ipStat.UploadRate || 0,
-            limit: limitValue,
-            status: ipStat.status || ipStat.Status || 'Active',
-            lastUpdate: Date.now(),
-          }
-
-          const existing = newDevices.get(ip)
-          
-          // Only update if device is new or data changed
-          if (!existing || 
-              existing.download !== newDevice.download ||
-              existing.upload !== newDevice.upload ||
-              existing.limit !== newDevice.limit ||
-              existing.status !== newDevice.status ||
-              existing.macAddress !== newDevice.macAddress ||
-              existing.hostname !== newDevice.hostname) {
-            newDevices.set(ip, newDevice)
-            hasChanges = true
-          }
-        })
-
-        // Remove stale devices (not in current state.ips)
-        const currentIPs = new Set(state.ips.map(s => s.ip || s.IP).filter(Boolean))
-        for (const ip of newDevices.keys()) {
-          if (!currentIPs.has(ip)) {
-            newDevices.delete(ip)
-            hasChanges = true
+        // Extract MAC and hostname
+        const macAddress = ipStat.macAddress || ''
+        const hostname = ipStat.hostname || ''
+        
+        const deviceInfo = getDeviceInfo(ip, macAddress, hostname)
+        
+        // Parse bandwidth limit from uploadLimit or downloadLimit
+        let limitValue = null
+        const bandwidthLimit = ipStat.uploadLimit || ipStat.downloadLimit
+        if (bandwidthLimit && bandwidthLimit.trim() !== '') {
+          const match = bandwidthLimit.match(/([0-9.]+)/)
+          if (match) {
+            limitValue = parseFloat(match[1])
           }
         }
 
-        return hasChanges ? newDevices : prev
+        const newDevice = {
+          id: ip,
+          ip: ip,
+          ...deviceInfo,
+          download: ipStat.downloadRate || 0,
+          upload: ipStat.uploadRate || 0,
+          limit: limitValue,
+          status: ipStat.status || 'Active',
+          lastUpdate: Date.now(),
+        }
+
+        const existing = newDevices.get(ip)
+        
+        // Only update if device is new or data changed
+        if (!existing || 
+            existing.download !== newDevice.download ||
+            existing.upload !== newDevice.upload ||
+            existing.limit !== newDevice.limit ||
+            existing.status !== newDevice.status ||
+            existing.macAddress !== newDevice.macAddress ||
+            existing.hostname !== newDevice.hostname) {
+          newDevices.set(ip, newDevice)
+          hasChanges = true
+        }
       })
-    }
 
-    // Start sync
-    const syncControl = startIPSync(handleSyncUpdate)
-    syncControlRef.current = syncControl
+      // DON'T remove devices - only add/update them
+      // The backend will stop sending updates for disconnected devices
+      // and they'll naturally age out via the cleanup interval in the WebSocket hook
 
-    // Cleanup on unmount
-    return () => {
-      if (syncControlRef.current) {
-        syncControlRef.current.close()
-        syncControlRef.current = null
-      }
-    }
-  }, [])
+      return hasChanges ? newDevices : prev
+    })
+  }, [ipStats])
 
   // Cleanup stale devices (older than 30s)
   useEffect(() => {
@@ -275,25 +241,22 @@ const ActiveDevices = () => {
     e.preventDefault()
     if (!selectedDevice || !speedLimit) return
 
+    console.log('[ActiveDevices] Applying IP limit:', { ip: selectedDevice.ip, limit: speedLimit })
     setLoading(true)
     setError(null)
     setSuccess(null)
 
     try {
-      await api.setIPLimit(selectedDevice.ip, speedLimit)
+      const result = await api.setIPLimit(selectedDevice.ip, speedLimit)
+      console.log('[ActiveDevices] IP limit applied successfully:', result)
       setSuccess(`Speed limit ${speedLimit} applied to ${selectedDevice.ip}`)
       setShowIPLimitModal(false)
       
-      setDevices(prev => {
-        const newDevices = new Map(prev)
-        const device = newDevices.get(selectedDevice.ip)
-        if (device) {
-          device.limit = parseInt(speedLimit) || device.limit
-          newDevices.set(selectedDevice.ip, device)
-        }
-        return newDevices
-      })
+      // Don't manually update device state - let WebSocket handle it
+      // The backend will send updated IP stats via WebSocket
+      
     } catch (err) {
+      console.error('[ActiveDevices] Failed to set IP limit:', err)
       setError(`Failed to set IP limit: ${err.message}`)
     } finally {
       setLoading(false)
@@ -430,19 +393,16 @@ const ActiveDevices = () => {
   const blockedDevicesArray = devicesArray.filter(d => blockedDevices.has(d.ip))
 
   // Determine connection status for display
-  const connectionStatus = syncState.error ? 'error' 
-    : !syncState.initialSyncComplete ? 'syncing'
-    : syncState.isConnected ? 'connected'
+  const wsConnectionStatus = connectionStatus === 'connected' ? 'connected'
+    : connectionStatus === 'connecting' ? 'syncing'
     : 'disconnected'
 
-  const statusText = syncState.error ? `● Error: ${syncState.error}`
-    : !syncState.initialSyncComplete ? '● Syncing...'
-    : syncState.isConnected ? '● Connected'
+  const statusText = connectionStatus === 'connected' ? '● Connected'
+    : connectionStatus === 'connecting' ? '● Connecting...'
     : '● Disconnected'
 
-  const statusColor = connectionStatus === 'connected' ? 'var(--green)'
-    : connectionStatus === 'syncing' ? 'var(--orange)'
-    : connectionStatus === 'error' ? 'var(--red)'
+  const statusColor = wsConnectionStatus === 'connected' ? 'var(--green)'
+    : wsConnectionStatus === 'syncing' ? 'var(--orange)'
     : 'var(--text-secondary)'
 
   return (
@@ -457,16 +417,6 @@ const ActiveDevices = () => {
             }}>
               {statusText}
             </span>
-            {!syncState.initialSyncComplete && (
-              <span style={{ marginLeft: '8px', fontSize: '0.9em', color: 'var(--text-secondary)' }}>
-                (Loading cached data...)
-              </span>
-            )}
-            {syncState.sequence > 0 && (
-              <span style={{ marginLeft: '8px', fontSize: '0.85em', color: 'var(--text-secondary)' }}>
-                • Seq: {syncState.sequence}
-              </span>
-            )}
           </p>
         </div>
       </div>
@@ -488,10 +438,10 @@ const ActiveDevices = () => {
               {devicesArray.length === 0 ? (
                 <tr>
                   <td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
-                    {!syncState.initialSyncComplete ? (
+                    {connectionStatus === 'connecting' ? (
                       <div>
                         <RefreshCw size={24} style={{ animation: 'spin 1s linear infinite', marginBottom: '8px' }} />
-                        <div>Loading cached devices and syncing with server...</div>
+                        <div>Connecting to server...</div>
                       </div>
                     ) : (
                       'No active devices detected'
@@ -912,8 +862,11 @@ const ActiveDevices = () => {
                   <button 
                     type="button"
                     className="cancel-btn"
-                    onClick={() => setShowIPLimitModal(false)}
-                    disabled={loading}
+                    onClick={() => {
+                      setShowIPLimitModal(false)
+                      setLoading(false)
+                      setError(null)
+                    }}
                     style={{
                       padding: '10px 20px',
                       backgroundColor: 'transparent',

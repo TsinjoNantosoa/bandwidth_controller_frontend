@@ -21,6 +21,18 @@ const TrafficHistory = () => {
   })
   const [showCustomRange, setShowCustomRange] = useState(false)
 
+  // Get appropriate time format based on time range
+  const getTimeFormat = (range) => {
+    switch (range) {
+      case '1h': return 'HH:mm'           // Just time for 1 hour
+      case '6h': return 'HH:mm'           // Just time for 6 hours
+      case '24h': return 'MMM dd HH:mm'   // Date + time for 24 hours
+      case '7d': return 'MMM dd HH:mm'    // Date + time for 7 days
+      case '30d': return 'MMM dd'          // Just date for 30 days
+      default: return 'MMM dd HH:mm'
+    }
+  }
+
   useEffect(() => {
     fetchData()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -113,10 +125,11 @@ const TrafficHistory = () => {
         getTopConsumers(startTime, endTime, 10)
       ])
       
-      // Format data for charts
+      // Format data for charts with appropriate time format
+      const timeFormat = getTimeFormat(timeRange)
       const formattedData = globalHistory.map(entry => ({
         timestamp: new Date(entry.timestamp).getTime(),
-        timeLabel: format(new Date(entry.timestamp), 'MMM dd HH:mm'),
+        timeLabel: format(new Date(entry.timestamp), timeFormat),
         upload: parseFloat(entry.lan_upload_rate || 0).toFixed(2),
         download: parseFloat(entry.lan_download_rate || 0).toFixed(2),
         wanUpload: parseFloat(entry.wan_upload_rate || 0).toFixed(2),
@@ -136,7 +149,7 @@ const TrafficHistory = () => {
             const history = await getIPTrafficHistory(consumer.ip, startTime, endTime)
             ipHistories[consumer.ip] = history.map(entry => ({
               timestamp: new Date(entry.timestamp).getTime(),
-              timeLabel: format(new Date(entry.timestamp), 'MMM dd HH:mm'),
+              timeLabel: format(new Date(entry.timestamp), timeFormat),
               upload: parseFloat(entry.upload_rate || 0).toFixed(2),
               download: parseFloat(entry.download_rate || 0).toFixed(2)
             }))

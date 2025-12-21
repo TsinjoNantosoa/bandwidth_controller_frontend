@@ -1,14 +1,15 @@
-import React, { useState } from 'react';
-import { Clock, Plus } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Clock, Plus, Edit } from 'lucide-react';
 import * as api from '../services/api';
 
-const ScheduleRuleModal = ({ isOpen, onClose, onSuccess }) => {
+const ScheduleRuleModal = ({ isOpen, onClose, onSuccess, editRule = null }) => {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     id: '',
     name: '',
     description: '',
     rate_mbps: 50,
+    priority: 5,
     startHour: '08',
     startMinute: '00',
     endHour: '18',
@@ -17,6 +18,64 @@ const ScheduleRuleModal = ({ isOpen, onClose, onSuccess }) => {
     customDays: [],
     enabled: true
   });
+
+  // Load edit data when editRule changes
+  useEffect(() => {
+    if (editRule) {
+      // Parse cron expression and duration to populate form
+      const parts = editRule.cron_expr.split(' ');
+      const minute = parts[0];
+      const hour = parts[1];
+      const days = parts[4];
+
+      let periodicity = 'daily';
+      let customDays = [];
+      if (days === '1-5') {
+        periodicity = 'weekdays';
+      } else if (days === '0,6') {
+        periodicity = 'weekend';
+      } else if (days !== '*') {
+        periodicity = 'custom';
+        customDays = days.split(',');
+      }
+
+      const startMinutes = parseInt(hour) * 60 + parseInt(minute);
+      const endMinutes = (startMinutes + editRule.duration) % 1440;
+      const endHour = Math.floor(endMinutes / 60);
+      const endMin = endMinutes % 60;
+
+      setFormData({
+        id: editRule.id,
+        name: editRule.name,
+        description: editRule.description || '',
+        rate_mbps: editRule.rate_mbps,
+        priority: editRule.priority || 5,
+        startHour: hour.padStart(2, '0'),
+        startMinute: minute.padStart(2, '0'),
+        endHour: endHour.toString().padStart(2, '0'),
+        endMinute: endMin.toString().padStart(2, '0'),
+        periodicity,
+        customDays,
+        enabled: editRule.enabled
+      });
+    } else {
+      // Reset for new rule
+      setFormData({
+        id: '',
+        name: '',
+        description: '',
+        rate_mbps: 50,
+        priority: 5,
+        startHour: '08',
+        startMinute: '00',
+        endHour: '18',
+        endMinute: '00',
+        periodicity: 'weekdays',
+        customDays: [],
+        enabled: true
+      });
+    }
+  }, [editRule]);
 
   const buildCronExpression = () => {
     const { startHour, startMinute, periodicity, customDays } = formData;
@@ -51,27 +110,34 @@ const ScheduleRuleModal = ({ isOpen, onClose, onSuccess }) => {
     try {
       setLoading(true);
 
-      const newRule = {
-        id: formData.id,
+      const ruleData = {
+        id: editRule ? editRule.id : formData.id,
         name: formData.name,
         description: formData.description,
         rate_mbps: formData.rate_mbps,
+        priority: formData.priority,
         cron_expr: buildCronExpression(),
         duration: calculateDuration(),
         enabled: formData.enabled
       };
 
-      // Récupérer les règles existantes
-      const { rules } = await api.getGlobalSchedule();
-      const newRules = [...rules, newRule];
-      await api.setGlobalSchedule(newRules);
+      if (editRule) {
+        // Update existing rule
+        await api.updateScheduleRule(editRule.id, ruleData);
+        onSuccess(`✓ Règle "${formData.name}" modifiée avec succès!`);
+      } else {
+        // Create new rule
+        await api.createScheduleRule(ruleData);
+        onSuccess(`✓ Règle "${formData.name}" créée avec succès!`);
+      }
 
-      // Réinitialiser le formulaire
+      // Reset form
       setFormData({
         id: '',
         name: '',
         description: '',
         rate_mbps: 50,
+        priority: 5,
         startHour: '08',
         startMinute: '00',
         endHour: '18',
@@ -81,12 +147,9 @@ const ScheduleRuleModal = ({ isOpen, onClose, onSuccess }) => {
         enabled: true
       });
 
-      if (onSuccess) {
-        onSuccess(`Règle "${newRule.name}" créée avec succès`);
-      }
       onClose();
     } catch (err) {
-      alert('Erreur lors de la création: ' + err.message);
+      alert('Erreur lors de la sauvegarde: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -117,7 +180,11 @@ const ScheduleRuleModal = ({ isOpen, onClose, onSuccess }) => {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h3><Clock size={20} /> New scheduling rule</h3>
+          <h3>
+            {editRule ? <Edit size={20} /> : <Clock size={20} />}
+            {' '}
+            {editRule ? 'Edit scheduling rule' : 'New scheduling rule'}
+          </h3>
           <button onClick={onClose} className="btn-close">×</button>
         </div>
 
@@ -131,6 +198,7 @@ const ScheduleRuleModal = ({ isOpen, onClose, onSuccess }) => {
                 onChange={(e) => setFormData({ ...formData, id: e.target.value })}
                 placeholder="ex: work-hours"
                 required
+                disabled={editRule !== null}
               />
             </div>
 
@@ -165,6 +233,20 @@ const ScheduleRuleModal = ({ isOpen, onClose, onSuccess }) => {
                 max="1000"
                 required
               />
+            </div>
+
+            <div className="form-group">
+              <label>Priority (1-10) *</label>
+              <input
+                type="number"
+                value={formData.priority}
+                onChange={(e) => setFormData({ ...formData, priority: parseInt(e.target.value) })}
+                min="1"
+                max="10"
+                title="1 = lowest priority, 10 = highest priority"
+                required
+              />
+              <small style={{ color: '#666', fontSize: '12px' }}>Higher priority rules override lower ones</small>
             </div>
 
             <div className="form-group">
@@ -260,8 +342,8 @@ const ScheduleRuleModal = ({ isOpen, onClose, onSuccess }) => {
               className="btn-primary"
               disabled={loading || (formData.periodicity === 'custom' && formData.customDays.length === 0)}
             >
-              <Plus size={18} />
-              {loading ? 'Création...' : 'Ajouter la règle'}
+              {editRule ? <Edit size={18} /> : <Plus size={18} />}
+              {loading ? (editRule ? 'Modification...' : 'Création...') : (editRule ? 'Modifier la règle' : 'Ajouter la règle')}
             </button>
           </div>
         </form>

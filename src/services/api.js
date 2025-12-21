@@ -98,6 +98,32 @@ export async function deleteGlobalScheduleRule(id) {
   return res.json();
 }
 
+export async function createScheduleRule(rule) {
+  const res = await fetch(`${API_BASE_URL}/qos/schedule/global/rule`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeader(),
+    },
+    body: JSON.stringify(rule),
+  });
+  if (!res.ok) throw new Error('Failed to create schedule rule');
+  return res.json();
+}
+
+export async function updateScheduleRule(id, rule) {
+  const res = await fetch(`${API_BASE_URL}/qos/schedule/global/rule/${id}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      ...getAuthHeader(),
+    },
+    body: JSON.stringify(rule),
+  });
+  if (!res.ok) throw new Error('Failed to update schedule rule');
+  return res.json();
+}
+
 /**
  * Applique une limitation simple (TBF - Token Bucket Filter)
  * Backend already knows LAN/WAN interfaces (passed at startup)
@@ -155,24 +181,43 @@ export const resetShaping = async () => {
  * @returns {Promise<Object>}
  */
 export const setIPLimit = async (ip, rateLimit) => {
-  const response = await fetch(`${API_BASE_URL}/qos/ip/limit`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      ...getAuthHeader(),
-    },
-    body: JSON.stringify({
-      ip: ip,
-      rate_limit: rateLimit,
-    }),
-  });
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout for testing
 
-  if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Unknown error' }));
-    throw new Error(error.message || `HTTP error! status: ${response.status}`);
+  try {
+    console.log('[API] Sending setIPLimit request:', { ip, rateLimit });
+    const response = await fetch(`${API_BASE_URL}/qos/ip/limit`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...getAuthHeader(),
+      },
+      body: JSON.stringify({
+        ip: ip,
+        rate_limit: rateLimit,
+      }),
+      signal: controller.signal,
+    });
+
+    clearTimeout(timeoutId);
+    console.log('[API] setIPLimit response received:', response.status);
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ message: 'Unknown error' }));
+      throw new Error(error.message || `HTTP error! status: ${response.status}`);
+    }
+
+    const result = await response.json();
+    console.log('[API] setIPLimit result:', result);
+    return result;
+  } catch (err) {
+    clearTimeout(timeoutId);
+    console.error('[API] setIPLimit error:', err);
+    if (err.name === 'AbortError') {
+      throw new Error('Request timeout - please check if the backend is running');
+    }
+    throw err;
   }
-
-  return response.json();
 };
 
 /**
@@ -294,6 +339,8 @@ export default {
   getGlobalSchedule,
   setGlobalSchedule,
   deleteGlobalScheduleRule,
+  createScheduleRule,
+  updateScheduleRule,
   blockDevice,
   unblockDevice,
   getDeviceStatus,

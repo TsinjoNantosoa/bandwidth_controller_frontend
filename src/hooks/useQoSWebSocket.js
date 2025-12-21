@@ -53,7 +53,40 @@ export const useQoSWebSocket = () => {
         try {
           const update = JSON.parse(event.data);
 
-          if (update.type === 'global' && update.global_stat) {
+          if (update.type === 'snapshot' && update.snapshot) {
+            // Handle initial snapshot
+            const snapshot = update.snapshot;
+            
+            // Update global stats from snapshot if available
+            if (snapshot.global_limit) {
+              setGlobalStats(prev => ({
+                ...prev,
+                globalLimit: snapshot.global_limit
+              }));
+            }
+            
+            // Process all IPs in snapshot
+            if (snapshot.ips && Array.isArray(snapshot.ips)) {
+              setIPStats(prev => {
+                const newMap = new Map(prev);
+                snapshot.ips.forEach(ipData => {
+                  newMap.set(ipData.ip, {
+                    ip: ipData.ip,
+                    uploadRate: ipData.upload_rate_mbps || 0,
+                    downloadRate: ipData.download_rate_mbps || 0,
+                    isLimited: ipData.is_limited || false,
+                    uploadLimit: ipData.bandwidth_limit || '',
+                    downloadLimit: ipData.bandwidth_limit || '',
+                    macAddress: ipData.mac_address || '',
+                    hostname: ipData.hostname || '',
+                    status: ipData.status || 'Active',
+                    lastUpdate: Date.now()
+                  });
+                });
+                return newMap;
+              });
+            }
+          } else if (update.type === 'global' && update.global_stat) {
             // Mise à jour des statistiques globales - utilise callback pour éviter closure
             setGlobalStats(prev => ({
               lanInterface: update.global_stat.lan_interface,
@@ -68,17 +101,32 @@ export const useQoSWebSocket = () => {
               timestamp: new Date(update.global_stat.timestamp)
             }));
           } else if (update.type === 'ip' && update.ip_stat) {
-            // Mise à jour des statistiques par IP
+            // Mise à jour des statistiques par IP - preserve existing fields
             setIPStats(prev => {
               const newMap = new Map(prev);
-              newMap.set(update.ip_stat.ip, {
+              const existing = newMap.get(update.ip_stat.ip) || {};
+              
+              const updatedEntry = {
+                ...existing,  // Preserve existing fields
                 ip: update.ip_stat.ip,
                 uploadRate: update.ip_stat.upload_rate_mbps || 0,
                 downloadRate: update.ip_stat.download_rate_mbps || 0,
-                isLimited: update.ip_stat.is_limited || false,
+                isLimited: update.ip_stat.is_limited !== undefined ? update.ip_stat.is_limited : existing.isLimited,
+                uploadLimit: update.ip_stat.bandwidth_limit || existing.uploadLimit || '',
+                downloadLimit: update.ip_stat.bandwidth_limit || existing.downloadLimit || '',
+                macAddress: update.ip_stat.mac_address || existing.macAddress || '',
+                hostname: update.ip_stat.hostname || existing.hostname || '',
                 status: update.ip_stat.status || 'Active',
                 lastUpdate: Date.now()
+              };
+              
+              console.log('[WebSocket] IP update:', update.ip_stat.ip, {
+                bandwidth_limit: update.ip_stat.bandwidth_limit,
+                is_limited: update.ip_stat.is_limited,
+                uploadLimit: updatedEntry.uploadLimit
               });
+              
+              newMap.set(update.ip_stat.ip, updatedEntry);
               return newMap;
             });
           }
@@ -166,7 +214,7 @@ export const useQoSWebSocket = () => {
 
   return {
     globalStats,
-    ipStats: Array.from(ipStats.values()),
+    ipStats,  // Return as Map, not array
     connectionStatus,
     error,
     reconnect

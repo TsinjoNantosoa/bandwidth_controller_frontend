@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react'
 import { Download, Upload, Monitor, HardDrive, TrendingUp, TrendingDown, Smartphone, Tv, Tablet, Plus, MoreVertical, Ban, Gauge, Clock, Wifi, WifiOff } from 'lucide-react'
 import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
+import { format } from 'date-fns'
 import useQoSWebSocket from '../hooks/useQoSWebSocket'
+import { getGlobalTrafficHistory, getTimeRange, getAppropriateInterval } from '../services/trafficHistory'
 import GlobalBandwidthModal from '../components/GlobalBandwidthModal'
 import ScheduleRuleModal from '../components/ScheduleRuleModal'
 import './Dashboard.css'
@@ -9,6 +11,9 @@ import './Dashboard.css'
 const Dashboard = () => {
   // WebSocket pour les stats en temps réel
   const { globalStats, ipStats, connectionStatus, reconnect } = useQoSWebSocket()
+  
+  // Convert ipStats Map to array for rendering
+  const ipStatsArray = Array.from(ipStats.values())
   
   const [stats, setStats] = useState({
     downloadSpeed: 0,
@@ -19,34 +24,59 @@ const Dashboard = () => {
     trafficChange: 0
   })
 
+  const [bandwidthData, setBandwidthData] = useState([])
+  const [chartLoading, setChartLoading] = useState(false)
+  const [chartTimeRange, setChartTimeRange] = useState('24h')
+
+  // Fetch historical bandwidth data for chart
+  useEffect(() => {
+    const fetchBandwidthHistory = async () => {
+      setChartLoading(true)
+      try {
+        const range = getTimeRange(chartTimeRange)
+        const interval = getAppropriateInterval(range.startTime, range.endTime)
+        const history = await getGlobalTrafficHistory(range.startTime, range.endTime, interval)
+        
+        // Determine time format based on range
+        let timeFormat = 'HH:mm'
+        if (chartTimeRange === '7d' || chartTimeRange === '30d') {
+          timeFormat = 'MMM dd'
+        } else if (chartTimeRange === '24h') {
+          timeFormat = 'HH:mm'
+        }
+        
+        const formattedData = history.map(entry => ({
+          time: format(new Date(entry.timestamp), timeFormat),
+          download: parseFloat(entry.lan_download_rate || 0),
+          upload: parseFloat(entry.lan_upload_rate || 0)
+        }))
+        
+        setBandwidthData(formattedData)
+      } catch (err) {
+        console.error('Failed to fetch bandwidth history:', err)
+      } finally {
+        setChartLoading(false)
+      }
+    }
+
+    fetchBandwidthHistory()
+    // Refresh chart every 5 minutes
+    const interval = setInterval(fetchBandwidthHistory, 5 * 60 * 1000)
+    return () => clearInterval(interval)
+  }, [chartTimeRange])
+
   // Mettre à jour les stats depuis le WebSocket
   useEffect(() => {
     if (globalStats) {
       setStats(prev => ({
         ...prev,
-        downloadSpeed: globalStats.wanDownloadRate,  // Internet → Client = WAN RX (download utilisateur)
-        uploadSpeed: globalStats.lanDownloadRate,     // Client → Internet = LAN RX (upload utilisateur)
+        downloadSpeed: globalStats.lanDownloadRate,  // Download to users (LAN Tx)
+        uploadSpeed: globalStats.lanUploadRate,      // Upload from users (LAN Rx)
         activeDevices: globalStats.totalActiveIPs,
         devicesWithLimits: globalStats.totalLimitedIPs
       }))
     }
   }, [globalStats])
-
-  // Données pour le graphique de bande passante
-  const bandwidthData = [
-    { time: '00:00', download: 15, upload: 8 },
-    { time: '02:00', download: 12, upload: 6 },
-    { time: '04:00', download: 10, upload: 5 },
-    { time: '06:00', download: 18, upload: 9 },
-    { time: '08:00', download: 35, upload: 15 },
-    { time: '10:00', download: 42, upload: 18 },
-    { time: '12:00', download: 50, upload: 22 },
-    { time: '14:00', download: 48, upload: 20 },
-    { time: '16:00', download: 45, upload: 19 },
-    { time: '18:00', download: 42, upload: 18 },
-    { time: '20:00', download: 38, upload: 16 },
-    { time: '22:00', download: 32, upload: 14 },
-  ]
 
   // Données pour le diagramme circulaire
   const trafficDistribution = [
@@ -285,45 +315,83 @@ const Dashboard = () => {
         {/* Bandwidth Usage Chart */}
         <div className="chart-card fade-in" style={{ animationDelay: '0.4s' }}>
           <div className="chart-header">
-            <h3>Bandwidth Usage (24h)</h3>
-            <select className="time-selector">
-              <option>Last 24 Hours</option>
-              <option>Last 7 Days</option>
-              <option>Last 30 Days</option>
+            <h3>Bandwidth Usage History</h3>
+            <select 
+              className="time-selector"
+              value={chartTimeRange}
+              onChange={(e) => setChartTimeRange(e.target.value)}
+            >
+              <option value="1h">Last Hour</option>
+              <option value="6h">Last 6 Hours</option>
+              <option value="24h">Last 24 Hours</option>
+              <option value="7d">Last 7 Days</option>
+              <option value="30d">Last 30 Days</option>
             </select>
           </div>
           <div className="chart-container">
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={bandwidthData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#2d3748" />
-                <XAxis dataKey="time" stroke="#8b92a4" />
-                <YAxis stroke="#8b92a4" />
-                <Tooltip 
-                  contentStyle={{ 
-                    backgroundColor: '#1e2634', 
-                    border: '1px solid #2d3748',
-                    borderRadius: '8px'
-                  }}
-                />
-                <Legend />
-                <Line 
-                  type="monotone" 
-                  dataKey="download" 
-                  stroke="#3b82f6" 
-                  strokeWidth={2}
-                  name="Download"
-                  dot={false}
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="upload" 
-                  stroke="#a855f7" 
-                  strokeWidth={2}
-                  name="Upload"
-                  dot={false}
-                />
-              </LineChart>
-            </ResponsiveContainer>
+            {chartLoading ? (
+              <div style={{ 
+                height: '300px', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                color: 'var(--text-secondary)'
+              }}>
+                Loading chart data...
+              </div>
+            ) : bandwidthData.length === 0 ? (
+              <div style={{ 
+                height: '300px', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                color: 'var(--text-secondary)'
+              }}>
+                No historical data available yet
+              </div>
+            ) : (
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={bandwidthData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#2d3748" />
+                  <XAxis 
+                    dataKey="time" 
+                    stroke="#8b92a4"
+                    tick={{ fontSize: 12 }}
+                    interval="preserveStartEnd"
+                  />
+                  <YAxis 
+                    stroke="#8b92a4"
+                    tick={{ fontSize: 12 }}
+                    label={{ value: 'Mbps', angle: -90, position: 'insideLeft', style: { fill: '#8b92a4' } }}
+                  />
+                  <Tooltip 
+                    contentStyle={{ 
+                      backgroundColor: '#1e2634', 
+                      border: '1px solid #2d3748',
+                      borderRadius: '8px'
+                    }}
+                    formatter={(value) => `${Number(value).toFixed(2)} Mbps`}
+                  />
+                  <Legend />
+                  <Line 
+                    type="monotone" 
+                    dataKey="download" 
+                    stroke="#3b82f6" 
+                    strokeWidth={2}
+                    name="Download"
+                    dot={false}
+                  />
+                  <Line 
+                    type="monotone" 
+                    dataKey="upload" 
+                    stroke="#a855f7" 
+                    strokeWidth={2}
+                    name="Upload"
+                    dot={false}
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
 
@@ -384,8 +452,8 @@ const Dashboard = () => {
                 </tr>
               </thead>
               <tbody>
-                {ipStats && ipStats.length > 0 ? (
-                  ipStats.map((device, index) => {
+                {ipStatsArray && ipStatsArray.length > 0 ? (
+                  ipStatsArray.map((device, index) => {
                     return (
                       <tr key={device.ip} className="device-row fade-in" style={{ animationDelay: `${index * 0.05}s` }}>
                         <td>

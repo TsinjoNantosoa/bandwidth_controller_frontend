@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Calendar, Clock, Plus, Trash2, Power, PowerOff, RefreshCw, TrendingDown, Zap } from 'lucide-react';
+import { Calendar, Clock, Plus, Trash2, Power, PowerOff, RefreshCw, TrendingDown, Zap, Edit } from 'lucide-react';
 import * as api from '../services/api';
 import ScheduleRuleModal from '../components/ScheduleRuleModal';
 
@@ -11,6 +11,7 @@ const BandwidthScheduler = () => {
   
   // Form state
   const [showForm, setShowForm] = useState(false);
+  const [editingRule, setEditingRule] = useState(null);
 
   // Charger les règles au montage
   useEffect(() => {
@@ -32,8 +33,25 @@ const BandwidthScheduler = () => {
 
   const handleScheduleSuccess = (message) => {
     setSuccess(message);
+    setEditingRule(null);
     loadRules();
     setTimeout(() => setSuccess(''), 3000);
+  };
+
+  const handleEditRule = (rule) => {
+    setEditingRule(rule);
+    setShowForm(true);
+  };
+
+  const handleCloseModal = () => {
+    setShowForm(false);
+    setEditingRule(null);
+  };
+
+  const getPriorityLevel = (priority) => {
+    if (priority >= 8) return 'high';
+    if (priority >= 5) return 'medium';
+    return 'low';
   };
 
   const handleDeleteRule = async (id) => {
@@ -79,12 +97,10 @@ const BandwidthScheduler = () => {
       setLoading(true);
       setError('');
       
-      // Mettre à jour l'état enabled de la règle
-      const updatedRules = rules.map(r => 
-        r.id === rule.id ? { ...r, enabled: !r.enabled } : r
-      );
+      // Toggle the enabled state
+      const updatedRule = { ...rule, enabled: !rule.enabled };
       
-      await api.setGlobalSchedule(updatedRules);
+      await api.updateScheduleRule(rule.id, updatedRule);
       setSuccess(`✓ Règle ${rule.enabled ? 'désactivée' : 'activée'}`);
       await loadRules();
       setTimeout(() => setSuccess(''), 3000);
@@ -136,8 +152,9 @@ const BandwidthScheduler = () => {
 
       <ScheduleRuleModal
         isOpen={showForm}
-        onClose={() => setShowForm(false)}
+        onClose={handleCloseModal}
         onSuccess={handleScheduleSuccess}
+        editRule={editingRule}
       />
 
       <div className="card">
@@ -193,10 +210,23 @@ const BandwidthScheduler = () => {
                       <Zap size={16} />
                       <span className="rate-badge">{rule.rate_mbps} Mbps</span>
                     </div>
+
+                    <div className="info-item">
+                      <span className={`priority-badge priority-${getPriorityLevel(rule.priority)}`}>
+                        Priority: {rule.priority}/10
+                      </span>
+                    </div>
                   </div>
                 </div>
 
                 <div className="rule-footer">
+                  <button
+                    onClick={() => handleEditRule(rule)}
+                    className="btn-edit"
+                  >
+                    <Edit size={16} />
+                    Modifier
+                  </button>
                   <button
                     onClick={() => handleDeleteRule(rule.id)}
                     className="btn-delete"
@@ -592,12 +622,58 @@ const BandwidthScheduler = () => {
           font-weight: 700;
         }
 
+        .priority-badge {
+          padding: 4px 12px;
+          border-radius: 6px;
+          font-weight: 600;
+          font-size: 13px;
+        }
+
+        .priority-badge.priority-high {
+          background: rgba(239, 68, 68, 0.1);
+          color: #ef4444;
+          border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .priority-badge.priority-medium {
+          background: rgba(59, 130, 246, 0.1);
+          color: #3b82f6;
+          border: 1px solid rgba(59, 130, 246, 0.3);
+        }
+
+        .priority-badge.priority-low {
+          background: rgba(107, 114, 128, 0.1);
+          color: #6b7280;
+          border: 1px solid rgba(107, 114, 128, 0.3);
+        }
+
         .rule-footer {
           padding: 16px 20px;
           background: var(--card-bg);
           border-top: 1px solid var(--border);
           display: flex;
           justify-content: flex-end;
+          gap: 10px;
+        }
+
+        .btn-edit {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 8px 16px;
+          background: rgba(59, 130, 246, 0.1);
+          border: 1px solid rgba(59, 130, 246, 0.3);
+          color: var(--blue);
+          border-radius: 8px;
+          cursor: pointer;
+          font-weight: 600;
+          font-size: 14px;
+          transition: all 0.2s;
+        }
+
+        .btn-edit:hover {
+          background: rgba(59, 130, 246, 0.2);
+          transform: translateY(-2px);
         }
 
         .btn-delete {
