@@ -71,15 +71,6 @@ const Sidebar = ({ isOpen, onClose }) => {
         </div>
       </nav>
 
-      <div className="sidebar-footer">
-        <div className="user-profile">
-          <div className="user-avatar">A</div>
-          <div className="user-info">
-            <div className="user-name">Administrator</div>
-            <div className="user-email">root@gateway</div>
-          </div>
-        </div>
-      </div>
     </aside>
   )
 }
