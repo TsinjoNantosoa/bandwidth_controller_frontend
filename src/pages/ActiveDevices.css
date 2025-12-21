@@ -810,3 +810,13 @@
   cursor: not-allowed;
   transform: none;
 }
+
+/* Spin animation for loading indicator */
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

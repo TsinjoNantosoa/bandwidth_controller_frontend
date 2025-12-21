@@ -1,14 +1,81 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Monitor, Smartphone, Tv, Tablet, Plus, MoreVertical, Ban, Gauge, Clock, Download } from 'lucide-react'
+import { Monitor, Smartphone, Tv, Tablet, Plus, MoreVertical, Ban, Gauge, Clock, Download, RefreshCw } from 'lucide-react'
 import * as api from '../services/api'
+import { startIPSync } from '../services/ipSync'
 import ScheduleRuleModal from '../components/ScheduleRuleModal'
 import GlobalBandwidthModal from '../components/GlobalBandwidthModal'
 import './ActiveDevices.css'
 
+// Device type detection based on MAC OUI and hostname patterns
+const detectDeviceType = (macAddress, hostname) => {
+  // Common MAC OUI prefixes (first 6 characters)
+  const macOUIs = {
+    // Apple devices
+    'F8:FF:C2': 'mobile', 'D8:9E:3F': 'mobile', '00:3E:E1': 'mobile', // Apple
+    'AC:DE:48': 'mobile', '00:CD:FE': 'mobile', '8C:85:90': 'mobile',
+    
+    // Samsung devices
+    'E8:50:8B': 'tv', 'EC:F4:BB': 'tv', '40:0E:85': 'mobile', // Samsung
+    'D8:57:EF': 'mobile', 'C4:62:EA': 'mobile',
+    
+    // LG TVs
+    'B8:5A:F7': 'tv', 'A8:23:FE': 'tv', 'E8:5B:5B': 'tv',
+    
+    // Google devices
+    'F4:F5:D8': 'tv', '54:60:09': 'tv', 'DA:A1:19': 'tv', // Chromecast/TV
+    
+    // Xiaomi
+    '34:CE:00': 'mobile', '64:09:80': 'mobile', '78:02:F8': 'mobile',
+    
+    // Sony
+    '00:23:45': 'tv', 'FC:F1:52': 'tv',
+    
+    // Dell/HP/Lenovo (common desktop/laptop manufacturers)
+    'D4:BE:D9': 'desktop', '00:14:22': 'desktop', 'F4:8E:38': 'desktop', // Dell
+    '3C:52:82': 'desktop', 'A4:5D:36': 'desktop', // HP
+    '00:21:CC': 'desktop', 'B8:CA:3A': 'desktop', // Lenovo
+  }
+  
+  // Hostname pattern detection
+  const hostnamePatterns = [
+    { pattern: /iphone|ipad|ipod/i, type: 'mobile' },
+    { pattern: /android|samsung|xiaomi|huawei|oppo|vivo/i, type: 'mobile' },
+    { pattern: /tv|chromecast|roku|firestick|appletv/i, type: 'tv' },
+    { pattern: /tablet|ipad/i, type: 'tablet' },
+    { pattern: /laptop|notebook|macbook/i, type: 'desktop' },
+    { pattern: /desktop|pc|workstation/i, type: 'desktop' },
+  ]
+
+  // Check MAC OUI first (most reliable)
+  if (macAddress) {
+    const ouiPrefix = macAddress.substring(0, 8).toUpperCase()
+    if (macOUIs[ouiPrefix]) {
+      return macOUIs[ouiPrefix]
+    }
+  }
+
+  // Check hostname patterns
+  if (hostname) {
+    for (const { pattern, type } of hostnamePatterns) {
+      if (pattern.test(hostname)) {
+        return type
+      }
+    }
+  }
+
+  // Default fallback based on IP last octet (legacy behavior)
+  return null
+}
+
 const ActiveDevices = () => {
   const [devices, setDevices] = useState(new Map())
   const [blockedDevices, setBlockedDevices] = useState(new Set())
-  const [wsStatus, setWsStatus] = useState('connecting')
+  const [syncState, setSyncState] = useState({
+    isConnected: false,
+    initialSyncComplete: false,
+    sequence: 0,
+    error: null,
+  })
   const [showActions, setShowActions] = useState(null)
   const [showGlobalBandwidthModal, setShowGlobalBandwidthModal] = useState(false)
   const [showIPLimitModal, setShowIPLimitModal] = useState(false)
@@ -18,151 +85,141 @@ const ActiveDevices = () => {
   const [error, setError] = useState(null)
   const [success, setSuccess] = useState(null)
   const [showScheduleModal, setShowScheduleModal] = useState(false)
-  const wsRef = useRef(null)
-  const reconnectTimeoutRef = useRef(null)
-  const devicesRef = useRef(new Map()) // Ref pour éviter les problèmes de closure
-
-  // Sync devices state with ref
-  useEffect(() => {
-    devicesRef.current = devices
-  }, [devices])
+  const syncControlRef = useRef(null)
 
   // Helper function to map device data
-  const getDeviceInfo = (ip) => {
-    const lastOctet = parseInt(ip.split('.').pop())
-    const icons = [Monitor, Smartphone, Tv, Tablet]
-    const colors = ['#3b82f6', '#a855f7', '#f59e0b', '#10b981']
-    const types = ['desktop', 'mobile', 'tv', 'tablet']
-    const names = ['Desktop-PC', 'Mobile Device', 'Smart TV', 'Tablet']
+  const getDeviceInfo = (ip, macAddress, hostname) => {
+    // Detect device type using MAC and hostname
+    const detectedType = detectDeviceType(macAddress, hostname)
     
-    const index = lastOctet % 4
+    // Map device types to icons and colors
+    const deviceTypeMap = {
+      'desktop': { icon: Monitor, color: '#3b82f6', name: 'Desktop/Laptop' },
+      'mobile': { icon: Smartphone, color: '#a855f7', name: 'Mobile Device' },
+      'tv': { icon: Tv, color: '#f59e0b', name: 'Smart TV' },
+      'tablet': { icon: Tablet, color: '#10b981', name: 'Tablet' },
+    }
+    
+    // Use detected type or fallback to IP-based assignment
+    let deviceConfig
+    if (detectedType && deviceTypeMap[detectedType]) {
+      deviceConfig = deviceTypeMap[detectedType]
+    } else {
+      // Fallback: use last octet for variety
+      const lastOctet = parseInt(ip.split('.').pop())
+      const types = ['desktop', 'mobile', 'tv', 'tablet']
+      const fallbackType = types[lastOctet % 4]
+      deviceConfig = deviceTypeMap[fallbackType]
+    }
+    
     return {
-      icon: icons[index],
-      color: colors[index],
-      type: types[index],
-      name: names[index],
-      description: `Device ${lastOctet}`
+      icon: deviceConfig.icon,
+      color: deviceConfig.color,
+      type: detectedType || 'unknown',
+      deviceTypeName: deviceConfig.name, // Friendly device type name
+      displayName: hostname && hostname !== 'Unknown' ? hostname : deviceConfig.name, // What to show
+      description: `Device ${ip.split('.').pop()}`,
+      macAddress: macAddress || 'Unknown',
+      hostname: hostname || ''
     }
   }
 
-  // WebSocket connection - utilise useCallback pour éviter les recreations
+  // IP Sync with IndexedDB persistence
   useEffect(() => {
-    const connectWebSocket = () => {
-      try {
-        const wsUrl = `ws://${window.location.hostname}:8080/qos/stream`
-        console.log('[WS] Connecting to:', wsUrl)
-        setWsStatus('connecting')
-        
-        const ws = new WebSocket(wsUrl)
-        wsRef.current = ws
+    console.log('[ActiveDevices] Starting IP sync with IndexedDB')
+    
+    const handleSyncUpdate = (state) => {
+      console.log('[ActiveDevices] Sync update:', {
+        ipCount: state.ips.length,
+        sequence: state.sequence,
+        initialSyncComplete: state.initialSyncComplete,
+        isConnected: state.isConnected,
+      })
 
-        ws.onopen = () => {
-          console.log('[WS] Connected successfully')
-          setWsStatus('connected')
-          if (reconnectTimeoutRef.current) {
-            clearTimeout(reconnectTimeoutRef.current)
-            reconnectTimeoutRef.current = null
-          }
-        }
+      // Update sync state
+      setSyncState({
+        isConnected: state.isConnected,
+        initialSyncComplete: state.initialSyncComplete,
+        sequence: state.sequence,
+        error: state.error,
+      })
 
-        ws.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data)
-            console.log('[WS] Received:', data)
-            
-            // Le backend envoie { type: "ip", ip_stat: {...} } ou { type: "global", global_stat: {...} }
-            if (data.type === 'ip' && data.ip_stat) {
-              // Utilise setDevices avec callback pour éviter problèmes de closure
-              setDevices(prev => {
-                const newDevices = new Map(prev)
-                const deviceInfo = getDeviceInfo(data.ip_stat.ip)
-                
-                // Parse bandwidth_limit: si vide/null = sous limite globale uniquement
-                let limitValue = null
-                if (data.ip_stat.bandwidth_limit && data.ip_stat.bandwidth_limit.trim() !== '') {
-                  // Limite explicite définie - extraire le nombre
-                  const match = data.ip_stat.bandwidth_limit.match(/([0-9.]+)/)
-                  if (match) {
-                    limitValue = parseFloat(match[1])
-                  }
-                }
-                
-                newDevices.set(data.ip_stat.ip, {
-                  id: data.ip_stat.ip,
-                  ip: data.ip_stat.ip,
-                  ...deviceInfo,
-                  download: data.ip_stat.download_rate_mbps || 0,
-                  upload: data.ip_stat.upload_rate_mbps || 0,
-                  limit: limitValue, // null = global, number = limite explicite
-                  status: data.ip_stat.status || 'Active',
-                  lastUpdate: Date.now()
-                })
-                
-                return newDevices
-              })
-            } else if (data.ip) {
-              // Fallback pour l'ancien format
-              setDevices(prev => {
-                const newDevices = new Map(prev)
-                const deviceInfo = getDeviceInfo(data.ip)
-                
-                let limitValue = null
-                if (data.bandwidth_limit && data.bandwidth_limit.trim() !== '') {
-                  const match = data.bandwidth_limit.match(/([0-9.]+)/)
-                  if (match) {
-                    limitValue = parseFloat(match[1])
-                  }
-                }
-                
-                newDevices.set(data.ip, {
-                  id: data.ip,
-                  ip: data.ip,
-                  ...deviceInfo,
-                  download: data.download_rate_mbps || 0,
-                  upload: data.upload_rate_mbps || 0,
-                  limit: limitValue,
-                  status: data.status || 'Active',
-                  lastUpdate: Date.now()
-                })
-                
-                return newDevices
-              })
+      // Only update devices that actually changed (optimization)
+      setDevices(prev => {
+        const newDevices = new Map(prev)
+        let hasChanges = false
+
+        state.ips.forEach(ipStat => {
+          const ip = ipStat.ip || ipStat.IP
+          if (!ip) return
+
+          // Extract MAC and hostname from backend
+          const macAddress = ipStat.mac_address || ipStat.MACAddress || ''
+          const hostname = ipStat.hostname || ipStat.Hostname || ''
+          
+          const deviceInfo = getDeviceInfo(ip, macAddress, hostname)
+          
+          // Parse bandwidth limit
+          let limitValue = null
+          const bandwidthLimit = ipStat.bandwidth_limit || ipStat.BandwidthLimit
+          if (bandwidthLimit && bandwidthLimit.trim() !== '') {
+            const match = bandwidthLimit.match(/([0-9.]+)/)
+            if (match) {
+              limitValue = parseFloat(match[1])
             }
-          } catch (err) {
-            console.error('[WS] Parse error:', err)
+          }
+
+          const newDevice = {
+            id: ip,
+            ip: ip,
+            ...deviceInfo,
+            download: ipStat.download_rate_mbps || ipStat.DownloadRate || 0,
+            upload: ipStat.upload_rate_mbps || ipStat.UploadRate || 0,
+            limit: limitValue,
+            status: ipStat.status || ipStat.Status || 'Active',
+            lastUpdate: Date.now(),
+          }
+
+          const existing = newDevices.get(ip)
+          
+          // Only update if device is new or data changed
+          if (!existing || 
+              existing.download !== newDevice.download ||
+              existing.upload !== newDevice.upload ||
+              existing.limit !== newDevice.limit ||
+              existing.status !== newDevice.status ||
+              existing.macAddress !== newDevice.macAddress ||
+              existing.hostname !== newDevice.hostname) {
+            newDevices.set(ip, newDevice)
+            hasChanges = true
+          }
+        })
+
+        // Remove stale devices (not in current state.ips)
+        const currentIPs = new Set(state.ips.map(s => s.ip || s.IP).filter(Boolean))
+        for (const ip of newDevices.keys()) {
+          if (!currentIPs.has(ip)) {
+            newDevices.delete(ip)
+            hasChanges = true
           }
         }
 
-        ws.onerror = (error) => {
-          console.error('[WS] Error:', error)
-          setWsStatus('disconnected')
-        }
-
-        ws.onclose = () => {
-          console.log('[WS] Connection closed, reconnecting in 5s...')
-          setWsStatus('disconnected')
-          wsRef.current = null
-          reconnectTimeoutRef.current = setTimeout(connectWebSocket, 5000)
-        }
-      } catch (err) {
-        console.error('[WS] Connection failed:', err)
-        setWsStatus('disconnected')
-        reconnectTimeoutRef.current = setTimeout(connectWebSocket, 5000)
-      }
+        return hasChanges ? newDevices : prev
+      })
     }
 
-    connectWebSocket()
+    // Start sync
+    const syncControl = startIPSync(handleSyncUpdate)
+    syncControlRef.current = syncControl
 
     // Cleanup on unmount
     return () => {
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current)
-      }
-      if (wsRef.current) {
-        wsRef.current.close()
+      if (syncControlRef.current) {
+        syncControlRef.current.close()
+        syncControlRef.current = null
       }
     }
-  }, []) // Pas de dépendances - ne se reconnecte qu'au mount
+  }, [])
 
   // Cleanup stale devices (older than 30s)
   useEffect(() => {
@@ -372,17 +429,45 @@ const ActiveDevices = () => {
   const devicesArray = Array.from(devices.values())
   const blockedDevicesArray = devicesArray.filter(d => blockedDevices.has(d.ip))
 
+  // Determine connection status for display
+  const connectionStatus = syncState.error ? 'error' 
+    : !syncState.initialSyncComplete ? 'syncing'
+    : syncState.isConnected ? 'connected'
+    : 'disconnected'
+
+  const statusText = syncState.error ? `● Error: ${syncState.error}`
+    : !syncState.initialSyncComplete ? '● Syncing...'
+    : syncState.isConnected ? '● Connected'
+    : '● Disconnected'
+
+  const statusColor = connectionStatus === 'connected' ? 'var(--green)'
+    : connectionStatus === 'syncing' ? 'var(--orange)'
+    : connectionStatus === 'error' ? 'var(--red)'
+    : 'var(--text-secondary)'
+
   return (
     <div className="active-devices-page">
       <div className="page-header">
         <div>
           <h2>Active Devices</h2>
-          <p>Real-time bandwidth monitoring via WebSocket • Status: <span style={{ 
-            color: wsStatus === 'connected' ? 'var(--green)' : wsStatus === 'connecting' ? 'var(--orange)' : 'var(--red)',
-            fontWeight: 'bold'
-          }}>
-            {wsStatus === 'connected' ? '● Connected' : wsStatus === 'connecting' ? '● Connecting...' : '● Disconnected'}
-          </span></p>
+          <p>
+            Real-time bandwidth monitoring • Status: <span style={{ 
+              color: statusColor,
+              fontWeight: 'bold'
+            }}>
+              {statusText}
+            </span>
+            {!syncState.initialSyncComplete && (
+              <span style={{ marginLeft: '8px', fontSize: '0.9em', color: 'var(--text-secondary)' }}>
+                (Loading cached data...)
+              </span>
+            )}
+            {syncState.sequence > 0 && (
+              <span style={{ marginLeft: '8px', fontSize: '0.85em', color: 'var(--text-secondary)' }}>
+                • Seq: {syncState.sequence}
+              </span>
+            )}
+          </p>
         </div>
       </div>
 
@@ -392,7 +477,7 @@ const ActiveDevices = () => {
             <thead>
               <tr>
                 <th>DEVICE</th>
-                <th>IP ADDRESS</th>
+                <th>TYPE</th>
                 <th>DOWNLOAD</th>
                 <th>UPLOAD</th>
                 <th>LIMIT</th>
@@ -403,7 +488,14 @@ const ActiveDevices = () => {
               {devicesArray.length === 0 ? (
                 <tr>
                   <td colSpan="6" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-secondary)' }}>
-                    {wsStatus === 'connected' ? 'Waiting for device data...' : 'Connecting to WebSocket...'}
+                    {!syncState.initialSyncComplete ? (
+                      <div>
+                        <RefreshCw size={24} style={{ animation: 'spin 1s linear infinite', marginBottom: '8px' }} />
+                        <div>Loading cached devices and syncing with server...</div>
+                      </div>
+                    ) : (
+                      'No active devices detected'
+                    )}
                   </td>
                 </tr>
               ) : (
@@ -420,13 +512,28 @@ const ActiveDevices = () => {
                           <DeviceIcon size={20} />
                         </div>
                         <div className="device-details">
-                          <div className="device-name">{device.name}</div>
-                          <div className="device-description">{device.description}</div>
+                          <div className="device-name">{device.displayName}</div>
+                          <div className="device-description" style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                            <span>{device.ip}</span>
+                            {device.macAddress && device.macAddress !== 'Unknown' && (
+                              <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
+                                • {device.macAddress}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </td>
                     <td>
-                      <span className="ip-address">{device.ip}</span>
+                      <span className="device-type-badge" style={{ 
+                        fontSize: '0.75rem',
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        backgroundColor: `${device.color}15`,
+                        color: device.color
+                      }}>
+                        {device.deviceTypeName}
+                      </span>
                     </td>
                     <td>
                       <span className="bandwidth-value">{device.download.toFixed(4)} Mbps</span>
@@ -568,8 +675,13 @@ const ActiveDevices = () => {
                           <DeviceIcon size={16} />
                         </div>
                         <div>
-                          <div className="device-name-small">{device.name}</div>
-                          <div className="device-ip-small">{device.ip}</div>
+                          <div className="device-name-small">{device.displayName}</div>
+                          <div className="device-ip-small" style={{ display: 'flex', gap: '6px', alignItems: 'center', fontSize: '0.7rem' }}>
+                            <span>{device.ip}</span>
+                            {device.macAddress && device.macAddress !== 'Unknown' && (
+                              <span style={{ color: 'var(--text-secondary)' }}>• {device.macAddress}</span>
+                            )}
+                          </div>
                         </div>
                       </div>
                       <button 
